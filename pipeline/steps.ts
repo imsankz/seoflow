@@ -13,6 +13,7 @@ import { aiChatWithRetry } from '../lib/ai-provider';
 import { logEntry, isAlreadyDone } from '../lib/audit-log';
 import { researchKeywords } from '../lib/ubersuggest-client';
 import { getToolTriggers, getBookingTriggers, getAiContext, getSiteUrl } from '../lib/config';
+import { checkGscDelta, recordStep, logRun } from '../lib/learning';
 import type { AuditLog } from '../lib/types';
 
 // ─── AI Quality Gate ──────────────────────────────────────────────────────────
@@ -613,6 +614,16 @@ export async function processPost(
 
   console.log(`     Words: ${before.word_count} | Links: ${before.internal_links} | Images: ${before.images} | GSC pos: ${gsc.position?.toFixed(1) || 'n/a'}`);
 
+  // ── Self-Learning: Check GSC delta from previous run ───────────────────
+  const category = parsed.frontmatter.category || parsed.frontmatter.tags?.[0] || 'unknown';
+  if (gsc?.impressions && gsc.impressions > 0) {
+    const delta = checkGscDelta(slug, mode, category, gsc);
+    if (delta) {
+      const dir = delta.positionChange < 0 ? 'improved' : 'declined';
+      console.log(`     📈 GSC since last audit: pos ${delta.positionChange > 0 ? '+' : ''}${delta.positionChange.toFixed(1)} (${dir}), ${delta.clicksChange > 0 ? '+' : ''}${delta.clicksChange} clicks`);
+    }
+  }
+
   let state = { content: input.content, frontmatter: input.frontmatter };
   const allChanges: string[] = [];
   let neuronData: NeuronData | null = null;
@@ -622,6 +633,7 @@ export async function processPost(
     const result = await stepKeywordResearch({ ...input, content: state.content, frontmatter: state.frontmatter });
     state = { content: result.content, frontmatter: result.frontmatter };
     allChanges.push(...result.changes);
+    recordStep(slug, 'keywords', category, result.changes.length, gsc);
   }
 
   // ── Step 1: Frontmatter ────────────────────────────────────────────────
@@ -629,6 +641,7 @@ export async function processPost(
     const result = stepFixFrontmatter({ ...input, content: state.content, frontmatter: state.frontmatter });
     state = { content: result.content, frontmatter: result.frontmatter };
     allChanges.push(...result.changes);
+    recordStep(slug, 'meta', category, result.changes.length, gsc);
   }
 
   // ── Step 2: Internal links ──────────────────────────────────────────────
@@ -636,6 +649,7 @@ export async function processPost(
     const result = stepInjectLinks({ ...input, content: state.content, frontmatter: state.frontmatter });
     state = { content: result.content, frontmatter: result.frontmatter };
     allChanges.push(...result.changes);
+    recordStep(slug, 'links', category, result.changes.length, gsc);
   }
 
   // ── Step 3: Images ──────────────────────────────────────────────────────
@@ -644,6 +658,7 @@ export async function processPost(
       const result = await stepInjectImages({ ...input, content: state.content, frontmatter: state.frontmatter });
       state = { content: result.content, frontmatter: result.frontmatter };
       allChanges.push(...result.changes);
+      recordStep(slug, 'images', category, result.changes.length, gsc);
     } else {
       console.log(`     ✓ Images sufficient (${before.images})`);
     }
@@ -653,6 +668,7 @@ export async function processPost(
   if (mode === 'all' || mode === 'neuron' || mode === 'content') {
     const result = await stepNeuronWriter({ ...input, content: state.content, frontmatter: state.frontmatter });
     neuronData = result.neuronData;
+    recordStep(slug, 'neuron', category, 0, gsc);
   }
 
   // ── Step 5: Gemini content audit ────────────────────────────────────────
@@ -663,6 +679,7 @@ export async function processPost(
     );
     state = { content: result.content, frontmatter: result.frontmatter };
     allChanges.push(...result.changes);
+    recordStep(slug, 'content', category, result.changes.length, gsc);
   }
 
   // ── Step 6: Claude SEO review ───────────────────────────────────────────
@@ -670,12 +687,14 @@ export async function processPost(
     const result = await stepClaudeSeoReview({ ...input, content: state.content, frontmatter: state.frontmatter });
     state = { content: result.content, frontmatter: result.frontmatter };
     allChanges.push(...result.changes);
+    recordStep(slug, 'review', category, result.changes.length, gsc);
   }
 
   // ── Step 7: Fact check ──────────────────────────────────────────────────
   if (mode === 'all' || mode === 'factcheck') {
     const result = await stepFactCheck({ ...input, content: state.content, frontmatter: state.frontmatter });
     allChanges.push(...result.changes);
+    recordStep(slug, 'factcheck', category, result.changes.length, gsc);
   }
 
   // ── Write updated MDX ──────────────────────────────────────────────────────
@@ -695,6 +714,11 @@ export async function processPost(
     for (const c of allChanges) console.log(`       • ${c}`);
   } else {
     console.log(`     ✓ No changes needed`);
+  }
+
+  // ── Self-Learning: Log run ─────────────────────────────────────────────
+  if (gsc?.impressions) {
+    logRun({ slug, step: mode, category, changesApplied: allChanges.length, gscBefore: null, gscAfter: { date: '', ...gsc as any }, gscDelta: null });
   }
 
   // ── Update audit log ───────────────────────────────────────────────────────

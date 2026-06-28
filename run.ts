@@ -23,6 +23,7 @@ import { loadAuditLog, saveAuditLog, isAlreadyDone } from './lib/audit-log';
 import { scorePriority } from './lib/mdx-parser';
 import { logAiStatus } from './lib/ai-provider';
 import { hasNeuronKey, getNeuronProjectId } from './lib/neuronwriter';
+import { getLearningSummary } from './lib/learning';
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
@@ -103,6 +104,13 @@ async function main(): Promise<void> {
   if (flagged.length) {
     console.log(`\n⚠️  Manual review (${flagged.length}):`);
     for (const [s] of flagged.slice(0, 10)) console.log(`    • ${s}`);
+  }
+
+  // Learning insights
+  const lessons = getLearningSummary();
+  if (lessons.length > 0) {
+    console.log(`\n🧠 Learning (step effectiveness):`);
+    for (const l of lessons) console.log(l);
   }
 
   const lowCtr = Object.entries(gscPages).filter(([, d]) => d.impressions > 2000 && d.ctr < 3).sort((a, b) => b[1].impressions - a[1].impressions).slice(0, 5);

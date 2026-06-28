@@ -7,8 +7,8 @@
   "postsDir": "src/content/posts",
   "gscPagesCsv": "gsc_data/Seiten.csv",
   "gscQueriesCsv": "gsc_data/Suchanfragen.csv",
-  "auditLogPath": "data/audit_log.json",
-  "keywordCachePath": "data/keyword-research-cache.json",
+  "auditLogPath": ".seoflow/data/audit-log.json",
+  "keywordCachePath": ".seoflow/data/keyword-cache.json",
   "destinationPattern": "/destinations/{country}",
   "tools": [
     { "keywords": ["budget", "cost", "how much", "cheap", "per day", "price"], "path": "/tools/budget-calculator", "anchor": "budget calculator" },

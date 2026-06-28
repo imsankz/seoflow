@@ -16,11 +16,8 @@
  *   npm run seo:keywords -- --slug <post>  → picks up cached result
  */
 import fs from 'fs';
-import path from 'path';
 import type { KeywordResearchResult } from './types';
-
-const ROOT = path.join(__dirname, '../../..');
-const CACHE_PATH = path.join(ROOT, 'data/keyword-research-cache.json');
+import { loadConfig } from './config';
 
 export interface CachedResearch {
   slug: string;
@@ -29,25 +26,22 @@ export interface CachedResearch {
   cachedAt: string;
 }
 
-/**
- * Load the keyword research cache.
- */
+function cachePath(): string {
+  return loadConfig().keywordCachePath;
+}
+
 function loadCache(): CachedResearch[] {
   try {
-    if (fs.existsSync(CACHE_PATH)) {
-      return JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+    const p = cachePath();
+    if (fs.existsSync(p)) {
+      return JSON.parse(fs.readFileSync(p, 'utf8'));
     }
-  } catch {
-    // Corrupted cache, start fresh
-  }
+  } catch {}
   return [];
 }
 
-/**
- * Save to the keyword research cache.
- */
 function saveCache(cache: CachedResearch[]): void {
-  fs.writeFileSync(CACHE_PATH, JSON.stringify(cache, null, 2));
+  fs.writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
 }
 
 /**
