@@ -1,23 +1,21 @@
-#!/bin/bash
-# SeoFlow — Update pipeline to latest version
+#!/usr/bin/env bash
+# SeoFlow — Update
+# Re-downloads pipeline files, agents, skills, and Python scripts,
+# then re-syncs agents to all detected AI tools.
+#
+# Usage: bash .seoflow/update.sh
 
 set -e
 
-echo "🔄 Updating SeoFlow..."
-
-if [ ! -d ".seoflow" ]; then
-  echo "❌ No .seoflow directory found. Run install.sh first."
-  exit 1
-fi
-
-BASE="https://raw.githubusercontent.com/imsankz/seoflow/main"
-
-echo "📦 Downloading latest pipeline..."
-for f in README.md lib/types.ts lib/config.ts lib/env-loader.ts lib/mdx-parser.ts lib/gsc-parser.ts lib/gsc-client.ts lib/gemini-client.ts lib/openrouter-client.ts lib/ai-provider.ts lib/pexels-client.ts lib/neuronwriter.ts lib/audit-log.ts lib/ubersuggest-client.ts lib/learning.ts lib/generator.ts lib/publisher.ts lib/validator.ts pipeline/steps.ts run.ts install.sh update.sh; do
-  curl -sSL "$BASE/$f" -o ".seoflow/$f"
-  echo "  ✓ $f"
-done
-
 echo ""
-echo "✅ SeoFlow updated to latest version"
+echo "  ╔══════════════════════════════════════════════╗"
+echo "  ║         SeoFlow — Updater                    ║"
+echo "  ╚══════════════════════════════════════════════╝"
+echo ""
+
+# Re-run installer in non-interactive mode (skips config prompts since
+# seoflow.config.json already exists)
+bash "$(dirname "$0")/install.sh" --sync-agents
+
+echo "  ✅ SeoFlow updated"
 echo ""
