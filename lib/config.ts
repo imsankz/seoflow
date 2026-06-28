@@ -21,6 +21,24 @@ export interface SeoFlowConfig {
   destinationPattern?: string;
   tools: Array<{ keywords: string[]; path: string; anchor: string }>;
   bookings: Array<{ keywords: string[]; path: string; anchor: string }>;
+
+  /** Content generation settings */
+  generation?: {
+    defaultSchema: string;
+    defaultCategory: string;
+    wordCountMin: number;
+    wordCountMax: number;
+  };
+
+  /** Publishing settings */
+  publishing?: {
+    gitEmail: string;
+    gitName: string;
+    branch: string;
+    indexnowHost?: string;
+    majorCities: string[];
+    baseUrl: string;
+  };
 }
 
 const CONFIG_FILE = 'seoflow.config.json';

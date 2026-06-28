@@ -18,5 +18,18 @@
   ],
   "bookings": [
     { "keywords": ["ferry", "boat trip", "cruise"], "path": "/book", "anchor": "book tickets" }
-  ]
+  ],
+  "generation": {
+    "defaultSchema": "TravelGuide",
+    "defaultCategory": "travel",
+    "wordCountMin": 1500,
+    "wordCountMax": 2500
+  },
+  "publishing": {
+    "gitEmail": "noreply@yoursite.com",
+    "gitName": "Site Publisher",
+    "branch": "main",
+    "baseUrl": "https://yoursite.com",
+    "majorCities": []
+  }
 }

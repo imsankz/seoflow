@@ -2,16 +2,25 @@
 /**
  * SeoFlow — SEO Pipeline Orchestrator
  *
- * Usage:
- *   npx tsx scripts/agents/seo-audit-agent.ts                    # Process top 10
- *   npx tsx scripts/agents/seo-audit-agent.ts --mode review      # Claude SEO review
- *   npx tsx scripts/agents/seo-audit-agent.ts --mode factcheck   # Fact check
- *   npx tsx scripts/agents/seo-audit-agent.ts --mode content     # NeuronWriter + Gemini
- *   npx tsx scripts/agents/seo-audit-agent.ts --slug <slug>      # One post, all steps
- *   npx tsx scripts/agents/seo-audit-agent.ts --dry-run          # Preview only
- *   npx tsx scripts/agents/seo-audit-agent.ts --limit 5          # Process N posts
+ * Pipeline modes (--mode):
+ *   meta, links, images, keywords, neuron, content, review, factcheck, all
  *
- * Modes: meta, links, images, keywords, neuron, content, review, factcheck, all
+ * Utility commands:
+ *   --mode generate          Generate new posts from keywords
+ *   --mode publish           Publish unpublished posts
+ *   --mode publish --go      Actually publish (no dry run)
+ *
+ * Global flags:
+ *   --slug <slug>            Process/publish only this post
+ *   --dry-run                Preview without writing
+ *   --limit <n>              Max posts to process (default 10)
+ *   --reset-slug <slug>      Re-audit a previously completed post
+ *
+ * Examples:
+ *   npx tsx .seoflow/run.ts                                          # Pipeline: top 10
+ *   npx tsx .seoflow/run.ts --mode generate --limit 3                # Generate 3 posts
+ *   npx tsx .seoflow/run.ts --mode publish --slug my-post            # Publish one post
+ *   npx tsx .seoflow/run.ts --mode publish --go                      # Publish top 5
  */
 
 import fs from 'fs';
@@ -24,6 +33,8 @@ import { scorePriority } from './lib/mdx-parser';
 import { logAiStatus } from './lib/ai-provider';
 import { hasNeuronKey, getNeuronProjectId } from './lib/neuronwriter';
 import { getLearningSummary } from './lib/learning';
+import { generateBatch, ContentGap } from './lib/generator';
+import { scanCandidates, publishBatch } from './lib/publisher';
 
 const args = process.argv.slice(2);
 const DRY_RUN = args.includes('--dry-run');
@@ -62,6 +73,52 @@ async function main(): Promise<void> {
   if (hasNeuronKey()) console.log(`📡 NeuronWriter: ${getNeuronProjectId()}`);
   else console.log('⚠️  NEURONWRITER_API_KEY not set');
   logAiStatus();
+
+  // ── Generate mode ──────────────────────────────────────────────────────
+  if (MODE === 'generate') {
+    const country = (() => { const i = args.indexOf('--country'); return i !== -1 ? args[i + 1] : null; })();
+    const gaps: ContentGap[] = [
+      { keyword: SLUG_FILTER || 'top things to do', type: 'things-to-do', destination: country || '', country: country || '' },
+    ];
+    // If no specific gap, prompt user via info
+    if (!SLUG_FILTER && !country) {
+      console.log('   Provide --slug <keyword> or --country <name> to generate content');
+      console.log('   Example: --slug "best restaurants in prague" --country "Czech Republic"');
+      console.log('');
+      return;
+    }
+    const results = await generateBatch(gaps, LIMIT);
+    console.log(`\n✅ Generated ${results.length} posts in ${postsDir}`);
+    console.log(`   Run \`npm run seo:audit -- --slug <slug>\` to optimize them.`);
+    return;
+  }
+
+  // ── Publish mode ───────────────────────────────────────────────────────
+  if (MODE === 'publish') {
+    const goFlag = args.includes('--go');
+    if (!goFlag) {
+      console.log('⚠️  Dry run mode. Use --go to actually publish.');
+      console.log('');
+    }
+    const candidates = scanCandidates({ slug: SLUG_FILTER || undefined, limit: LIMIT });
+    if (candidates.length === 0) {
+      console.log('📭 No unpublished posts found');
+      console.log('');
+      return;
+    }
+    console.log(`📋 ${candidates.length} unpublished posts found:\n`);
+    for (const c of candidates) {
+      console.log(`   ${c.priority} ${c.slug}`);
+    }
+    console.log('');
+    const result = publishBatch(candidates, !goFlag);
+    console.log(`\n✅ Published ${result.published} posts (${result.errors.length} errors)`);
+    if (result.errors.length > 0) {
+      console.log(`\n❌ Errors:`);
+      for (const e of result.errors) console.log(`   • ${e}`);
+    }
+    return;
+  }
 
   const files = fs.readdirSync(postsDir).filter(f => f.endsWith('.mdx'));
   console.log(`📁 ${files.length} posts\n`);
