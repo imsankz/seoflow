@@ -1,0 +1,22 @@
+{
+  "siteName": "Your Site Name",
+  "siteUrl": "yourdomain.com",
+  "author": "Your Name",
+  "authorLocation": "Your City, Country",
+  "writingSample": "A paragraph showing your natural writing voice. Short sentences. Specific observations. This gets injected into AI prompts to match your tone.",
+  "postsDir": "src/content/posts",
+  "gscPagesCsv": "gsc_data/Seiten.csv",
+  "gscQueriesCsv": "gsc_data/Suchanfragen.csv",
+  "auditLogPath": "data/audit_log.json",
+  "keywordCachePath": "data/keyword-research-cache.json",
+  "destinationPattern": "/destinations/{country}",
+  "tools": [
+    { "keywords": ["budget", "cost", "how much", "cheap", "per day", "price"], "path": "/tools/budget-calculator", "anchor": "budget calculator" },
+    { "keywords": ["packing", "what to bring", "luggage", "essentials"], "path": "/tools/packing-checklist", "anchor": "packing checklist" },
+    { "keywords": ["itinerary", "day by day", "trip plan", "day 1:"], "path": "/tools/itinerary-planner", "anchor": "itinerary planner" },
+    { "keywords": ["tour", "guided tour", "day tour", "excursion"], "path": "/tools/tour-finder", "anchor": "tour finder" }
+  ],
+  "bookings": [
+    { "keywords": ["ferry", "boat trip", "cruise"], "path": "/book", "anchor": "book tickets" }
+  ]
+}
