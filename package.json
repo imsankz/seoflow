@@ -35,5 +35,9 @@
     "keyword-research",
     "audit"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.0"
+  }
 }
