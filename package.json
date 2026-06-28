@@ -1,0 +1,39 @@
+{
+  "name": "@imsankz/seoflow",
+  "version": "0.1.0",
+  "description": "AI-powered SEO pipeline — content audit, keyword research, internal linking, image injection, content generation, publishing",
+  "type": "module",
+  "bin": {
+    "seoflow": "./dist/bin/cli.js"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./pipeline": "./dist/pipeline/steps.js",
+    "./*": "./dist/*.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "prepublishOnly": "node build.mjs",
+    "seoflow": "npx tsx run.ts",
+    "test": "npx tsx --test tests/**/*.test.ts",
+    "test:unit": "npx tsx --test tests/**/*.test.ts --test-name-pattern=unit",
+    "test:integration": "npx tsx --test tests/integration.test.ts"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "seo",
+    "pipeline",
+    "content-optimization",
+    "keyword-research",
+    "audit"
+  ],
+  "license": "MIT"
+}

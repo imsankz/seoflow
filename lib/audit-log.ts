@@ -2,31 +2,34 @@
  * Audit log persistence for the SEO pipeline.
  */
 import fs from 'fs';
+import path from 'path';
 import type { AuditLog, AuditLogEntry } from './types';
 import { getAuditLogPath } from './config';
 
 export function loadAuditLog(): AuditLog {
   const p = getAuditLogPath();
   if (!fs.existsSync(p)) {
-    return { version: '1.0', last_run: null, posts: { _template: {} as any } };
+    return { version: '1.0', last_run: null, posts: {} };
   }
   try {
     const log = JSON.parse(fs.readFileSync(p, 'utf8'));
     if (!log || typeof log !== 'object' || Array.isArray(log)) {
-      return { version: '1.0', last_run: null, posts: { _template: {} as any } };
+      return { version: '1.0', last_run: null, posts: {} };
     }
     if (!log.posts || typeof log.posts !== 'object') {
-      log.posts = { _template: {} as any };
+      log.posts = {};
     }
     return log;
   } catch {
-    return { version: '1.0', last_run: null, posts: { _template: {} as any } };
+    return { version: '1.0', last_run: null, posts: {} };
   }
 }
 
 export function saveAuditLog(log: AuditLog, dryRun = false): void {
   if (!dryRun) {
-    fs.writeFileSync(getAuditLogPath(), JSON.stringify(log, null, 2));
+    const p = getAuditLogPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, JSON.stringify(log, null, 2));
   }
 }
 

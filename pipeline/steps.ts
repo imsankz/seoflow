@@ -12,7 +12,8 @@ import { fetchNeuronData, hasNeuronKey } from '../lib/neuronwriter';
 import { aiChatWithRetry } from '../lib/ai-provider';
 import { logEntry, isAlreadyDone } from '../lib/audit-log';
 import { researchKeywords } from '../lib/ubersuggest-client';
-import { getToolTriggers, getBookingTriggers, getAiContext, getSiteUrl } from '../lib/config';
+import { getToolTriggers, getBookingTriggers, getAiContext, getWritingSample, getImageSearchFallback, getDefaultCategory, getContentDomain, getSiteUrl, loadConfig } from '../lib/config';
+import { resetAiCallCounter, getAiCallCount } from '../lib/ai-provider';
 import { checkGscDelta, recordStep, logRun } from '../lib/learning';
 import type { AuditLog } from '../lib/types';
 
@@ -35,7 +36,7 @@ export async function stepKeywordResearch(input: StepInput): Promise<StepOutput>
   const changes: string[] = [];
   const fm = { ...input.frontmatter };
   const seed = fm.focusKeyword || fm.title || input.slug;
-  const context = `${fm.category || 'travel'} ${(fm.tags || []).join(' ')}`;
+  const context = `${fm.category || getDefaultCategory()} ${(fm.tags || []).join(' ')}`;
 
   const kwResult = await researchKeywords(seed, input.slug, context);
   if (kwResult.source === 'ubersuggest' && kwResult.focusKeyword !== seed) {
@@ -136,7 +137,8 @@ export function stepInjectLinks(input: StepInput): StepOutput {
 export async function stepInjectImages(input: StepInput): Promise<StepOutput> {
   const changes: string[] = [];
   const sections = getH2Sections(input.content);
-  const destination = (input.frontmatter.tags || [])[0] || input.frontmatter.category || 'europe';
+  const destination = (input.frontmatter.tags || [])[0] || input.frontmatter.category || getImageSearchFallback(); // uses imageSearchFallback from config, not hardcoded 'europe'
+  const contentDomain = getContentDomain();
   let modified = input.content;
   let imagesAdded = 0;
   const MAX_NEW_IMAGES = 2;
@@ -154,7 +156,7 @@ export async function stepInjectImages(input: StepInput): Promise<StepOutput> {
       continue;
     }
 
-    const altText = `${section.heading} - ${destination} travel guide`;
+    const altText = `${section.heading} - ${destination} ${contentDomain}`;
     const imgMdx = `\n\n![${altText}](${img.url})\n*Photo: ${img.credit}*\n`;
 
     const headingLine = `## ${section.heading}`;
@@ -218,9 +220,16 @@ export async function stepGeminiContent(input: StepInput, neuronData: NeuronData
     return { content, frontmatter: fm, changes };
   }
 
+  const ai = getAiContext();
+  const contentType = fm.schema?.toLowerCase().includes('review') ? 'review' :
+    fm.schema?.toLowerCase().includes('itinerary') ? 'itinerary' :
+    fm.category || 'guide';
+  const writingSample = getWritingSample(contentType);
+  const contentDomain = getContentDomain();
+
   const tasks: string[] = [];
   if (needsFaq) tasks.push(`- Add a "## Frequently Asked Questions" section at the end with 4 Q&As based on search intent for "${fm.focusKeyword || fm.title}". Format each as: **Q: question?** then the answer paragraph.`);
-  if (needsExpansion) tasks.push(`- Expand these thin sections (under 100 words each) with 1-2 more practical paragraphs in Sankalp's first-person voice: ${thinSections.map(s => `"${s.heading}"`).join(', ')}`);
+  if (needsExpansion) tasks.push(`- Expand these thin sections (under 100 words each) with 1-2 more practical paragraphs in ${ai.author}'s first-person voice: ${thinSections.map(s => `"${s.heading}"`).join(', ')}`);
   if (needsNlpTerms) tasks.push(`- Naturally weave in these missing NLP terms where relevant (do not keyword-stuff): ${neuronData!.missingTerms.slice(0, 8).join(', ')}`);
 
   const gscContext = [
@@ -241,14 +250,14 @@ export async function stepGeminiContent(input: StepInput, neuronData: NeuronData
     ? content.slice(0, 1500) + '\n\n...[middle of post]...\n\n' + content.slice(-800)
     : content;
 
-  const ai = getAiContext();
+  const voiceSection = writingSample
+    ? `Here is a sample of ${ai.author}'s actual writing voice — match this tone exactly:\n"${writingSample}"\n`
+    : '';
 
-  const prompt = `You are editing a travel blog post for ${ai.siteUrl} written by ${ai.author}, a traveler based in ${ai.authorLocation}.
+  const prompt = `You are editing a ${contentDomain} post for ${ai.siteUrl} written by ${ai.author}${ai.authorLocation ? `, based in ${ai.authorLocation}` : ''}.
 Voice: first-person, practical, authentic, specific. Never generic. Never AI-sounding. Never start a section with "I".
 
-Here is a sample of ${ai.author}'s actual writing voice — match this tone exactly:
-"${ai.writingSample}"
-
+${voiceSection}
 Style rules:
 - Short, punchy sentences. Vary length.
 - Specific, grounded observations (not vague praise)
@@ -397,7 +406,8 @@ export async function stepClaudeSeoReview(input: StepInput): Promise<StepOutput>
   const desc = frontmatter.description || '';
   const title = frontmatter.title || slug;
 
-  const prompt = `You are an SEO quality reviewer. Analyze this travel blog post and return a JSON report.
+  const contentDomain = getContentDomain();
+  const prompt = `You are an SEO quality reviewer. Analyze this ${contentDomain} post and return a JSON report.
 
 POST: "${title}"
 SLUG: ${slug}
@@ -525,10 +535,11 @@ export async function stepFactCheck(input: StepInput): Promise<StepOutput> {
   // Sample up to 5 prices to verify
   const pricesToCheck = prices.slice(0, 5);
   const postTitle = frontmatter.title || slug;
-  const category = frontmatter.category || 'travel';
+  const category = frontmatter.category || getDefaultCategory();
   const destination = (frontmatter.tags || [])[0] || '';
+  const domain = getContentDomain();
 
-  const prompt = `You are verifying price claims in a travel blog post.
+  const prompt = `You are verifying price claims in a ${domain} post.
 
 POST TITLE: "${postTitle}"
 CATEGORY: ${category}
@@ -581,6 +592,8 @@ interface ProcessPostOptions {
   mode: string;
   skipAlreadyDone?: boolean;
   dryRun?: boolean;
+  /** Shared AI call counter for the whole run — enforces aiLimits.maxCallsPerRun */
+  aiCallCounter?: { count: number };
 }
 
 export async function processPost(
@@ -591,6 +604,21 @@ export async function processPost(
   opts: ProcessPostOptions
 ): Promise<{ slug: string; changes: number; before: any; after: any; neuronData: NeuronData | null }> {
   const { mode, dryRun } = opts;
+
+  // Per-post AI call tracking
+  const callsBefore = getAiCallCount();
+  const maxCallsPerPost = (() => {
+    try { return loadConfig().aiLimits?.maxCallsPerPost ?? Infinity; } catch { return Infinity; }
+  })();
+
+  function canCallAi(): boolean {
+    const used = getAiCallCount() - callsBefore;
+    if (used >= maxCallsPerPost) {
+      console.log(`     ⚠️  Per-post AI limit (${maxCallsPerPost}) reached — skipping remaining AI steps`);
+      return false;
+    }
+    return true;
+  }
 
   if (opts.skipAlreadyDone && isAlreadyDone(auditLog, slug)) {
     return { slug, changes: 0, before: {}, after: {}, neuronData: null };
@@ -672,7 +700,7 @@ export async function processPost(
   }
 
   // ── Step 5: Gemini content audit ────────────────────────────────────────
-  if (mode === 'all' || mode === 'content') {
+  if ((mode === 'all' || mode === 'content') && canCallAi()) {
     const result = await stepGeminiContent(
       { ...input, content: state.content, frontmatter: state.frontmatter },
       neuronData
@@ -683,7 +711,7 @@ export async function processPost(
   }
 
   // ── Step 6: Claude SEO review ───────────────────────────────────────────
-  if (mode === 'all' || mode === 'review') {
+  if ((mode === 'all' || mode === 'review') && canCallAi()) {
     const result = await stepClaudeSeoReview({ ...input, content: state.content, frontmatter: state.frontmatter });
     state = { content: result.content, frontmatter: result.frontmatter };
     allChanges.push(...result.changes);
@@ -691,7 +719,7 @@ export async function processPost(
   }
 
   // ── Step 7: Fact check ──────────────────────────────────────────────────
-  if (mode === 'all' || mode === 'factcheck') {
+  if ((mode === 'all' || mode === 'factcheck') && canCallAi()) {
     const result = await stepFactCheck({ ...input, content: state.content, frontmatter: state.frontmatter });
     allChanges.push(...result.changes);
     recordStep(slug, 'factcheck', category, result.changes.length, gsc);
@@ -717,7 +745,7 @@ export async function processPost(
   }
 
   // ── Self-Learning: Log run ─────────────────────────────────────────────
-  if (gsc?.impressions) {
+  if (!dryRun && gsc?.impressions) {
     logRun({ slug, step: mode, category, changesApplied: allChanges.length, gscBefore: null, gscAfter: { date: '', ...gsc as any }, gscDelta: null });
   }
 

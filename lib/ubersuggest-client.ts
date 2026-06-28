@@ -16,6 +16,7 @@
  *   npm run seo:keywords -- --slug <post>  → picks up cached result
  */
 import fs from 'fs';
+import path from 'path';
 import type { KeywordResearchResult } from './types';
 import { loadConfig } from './config';
 
@@ -43,6 +44,19 @@ function loadCache(): CachedResearch[] {
 function saveCache(cache: CachedResearch[]): void {
   fs.writeFileSync(cachePath(), JSON.stringify(cache, null, 2));
 }
+
+function findRoot(): string {
+  let dir = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    if (fs.existsSync(path.join(dir, 'seoflow.config.json'))) return dir;
+    const p = path.dirname(dir);
+    if (p === dir) break;
+    dir = p;
+  }
+  return process.cwd();
+}
+
+const ROOT = findRoot();
 
 /**
  * Check if the Ubersuggest MCP is available by looking at .mcp.json config.
@@ -116,7 +130,7 @@ export function cacheKeywordResults(
   }
 
   saveCache(cache);
-  console.log(`     💾 Saved keyword research to cache: ${CACHE_PATH}`);
+  console.log(`     💾 Saved keyword research to cache: ${cachePath()}`);
 }
 
 /**

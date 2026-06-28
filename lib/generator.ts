@@ -6,13 +6,13 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { loadConfig, getPostsDir, getAiContext } from './config';
+import { loadConfig, getPostsDir, getAiContext, getContentTypes, getContentDomain, getDefaultCategory } from './config';
 import { aiChatWithRetry } from './ai-provider';
 import type { Frontmatter } from './types';
 
 export interface ContentGap {
   keyword: string;
-  type: 'guide' | 'itinerary' | 'things-to-do' | 'city-pass-review' | 'article';
+  type: string;
   destination: string;
   country: string;
   slug?: string;
@@ -26,29 +26,6 @@ export interface GeneratedPost {
   frontmatter: Frontmatter;
 }
 
-const CONTENT_TYPES: Record<string, { schema: string; instructions: string }> = {
-  'guide': {
-    schema: 'TravelGuide',
-    instructions: `Write a comprehensive travel guide. Include practical tips, transportation options, best time to visit, where to stay (budget/mid-range/splurge), and local customs. Use first-person where relevant ("I found that...", "In my experience..."). Include specific prices, transit times, and real details.`,
-  },
-  'itinerary': {
-    schema: 'Itinerary',
-    instructions: `Write a day-by-day itinerary. Include specific timings, meal recommendations, transit between stops, and practical tips for each day. Start with a "Quick Summary" box highlighting the itinerary at a glance. Include a budget breakdown section.`,
-  },
-  'things-to-do': {
-    schema: 'TravelGuide',
-    instructions: `Write a things-to-do guide with categorized attractions. Include opening hours, ticket prices, how long to spend at each, and honest opinions on what's worth skipping. Group by category (museums, outdoor, free, etc.) or by area.`,
-  },
-  'city-pass-review': {
-    schema: 'Review',
-    instructions: `Write an honest review of the city pass. Include price comparison with individual attraction costs, what's included vs excluded, best use strategy (which days/attractions maximize value), and who it's worth for. Start with a verdict summary.`,
-  },
-  'article': {
-    schema: 'Article',
-    instructions: `Write an informative article. Use first-person perspective where relevant. Include specific examples, data points, and practical takeaways. Structure with clear H2 sections.`,
-  },
-};
-
 /**
  * Generate a post for a given keyword/content gap.
  * Returns the post content and frontmatter, or null on failure.
@@ -57,7 +34,8 @@ export async function generatePost(gap: ContentGap): Promise<GeneratedPost | nul
   const cfg = loadConfig();
   const ai = getAiContext();
   const today = new Date().toISOString().split('T')[0];
-  const typeConfig = CONTENT_TYPES[gap.type] || CONTENT_TYPES['article'];
+  const contentTypes = getContentTypes();
+  const typeConfig = contentTypes[gap.type] || contentTypes['article'] || { schema: 'Article', instructions: 'Write an informative article.' };
   const slug = gap.slug || generateSlug(gap.keyword, gap.destination);
   const postsDir = getPostsDir();
 
@@ -67,7 +45,8 @@ export async function generatePost(gap: ContentGap): Promise<GeneratedPost | nul
     return null;
   }
 
-  const prompt = `You are ${ai.author}, a travel writer for ${ai.siteUrl}. You live in ${ai.authorLocation} and write honest, practical, first-person travel content.
+  const domain = getContentDomain();
+  const prompt = `You are ${ai.author}, a ${domain} writer for ${ai.siteUrl}. You live in ${ai.authorLocation} and write honest, practical, first-person ${domain} content.
 
 Generate a complete MDX blog post for the following topic. Follow the instructions strictly.
 
@@ -90,7 +69,7 @@ OUTPUT FORMAT (YAML frontmatter + MDX body):
 title: "Compelling SEO title under 55 chars"
 date: "${today}"
 lastModified: "${today}"
-category: ${cfg.generation?.defaultCategory || 'travel'}
+category: ${getDefaultCategory()}
 excerpt: "150-160 char meta description with keyword naturally included"
 coverImage: ""
 published: false
@@ -98,7 +77,7 @@ author: ${ai.author}
 tags:
   - "${gap.destination}"
   - "${gap.country}"
-  - "travel guide"
+  - "${getContentDomain()} guide"
 schema: ${typeConfig.schema}
 focusKeyword: "${gap.keyword}"
 description: "Same as excerpt"
@@ -122,7 +101,7 @@ Do NOT include markdown code fences around the YAML frontmatter.`;
   // Extract or prepend frontmatter
   let content = response.trim();
   if (!content.startsWith('---')) {
-    content = `---\ntitle: "${gap.keyword} - ${gap.destination} Guide"\ndate: "${today}"\nlastModified: "${today}"\ncategory: ${cfg.generation?.defaultCategory || 'travel'}\nexcerpt: "A practical guide to ${gap.keyword.toLowerCase()} in ${gap.destination}."\ncoverImage: ""\npublished: false\nauthor: ${ai.author}\ntags:\n  - "${gap.destination}"\n  - "${gap.country}"\nschema: ${typeConfig.schema}\nfocusKeyword: "${gap.keyword}"\ndescription: "A practical guide to ${gap.keyword.toLowerCase()} in ${gap.destination}."\n---\n\n${content}`;
+    content = `---\ntitle: "${gap.keyword} - ${gap.destination} Guide"\ndate: "${today}"\nlastModified: "${today}"\ncategory: ${getDefaultCategory()}\nexcerpt: "A practical guide to ${gap.keyword.toLowerCase()} in ${gap.destination}."\ncoverImage: ""\npublished: false\nauthor: ${ai.author}\ntags:\n  - "${gap.destination}"\n  - "${gap.country}"\nschema: ${typeConfig.schema}\nfocusKeyword: "${gap.keyword}"\ndescription: "A practical guide to ${gap.keyword.toLowerCase()} in ${gap.destination}."\n---\n\n${content}`;
   }
 
   const filePath = path.join(postsDir, `${slug}.mdx`);

@@ -8,7 +8,7 @@
  */
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { loadConfig, getPostsDir } from './config';
 import { parseMdx, buildFrontmatterBlock } from './mdx-parser';
 
@@ -20,30 +20,37 @@ export interface PublishCandidate {
 }
 
 /**
- * Score a post's publish priority based on slug patterns.
+ * Score a post's publish priority.
+ *
+ * Uses publishPriority from config when provided (domain-agnostic).
+ * Falls back to built-in travel slug patterns when not configured.
  */
-function scorePriority(slug: string, majorCities: string[]): number {
+function scorePriority(slug: string, majorCities: string[], cfg: ReturnType<typeof loadConfig>): number {
   const s = slug.toLowerCase();
 
-  // City pass reviews
+  // Config-driven priority rules (domain-agnostic)
+  if (cfg.publishPriority && cfg.publishPriority.length > 0) {
+    for (const rule of cfg.publishPriority) {
+      try {
+        if (new RegExp(rule.pattern, 'i').test(s)) return rule.score;
+      } catch {
+        if (s.includes(rule.pattern.toLowerCase())) return rule.score;
+      }
+    }
+    return 40;
+  }
+
+  // Built-in travel patterns (used when publishPriority not configured)
   if (s.includes('pass-review')) {
     const hasMajorCity = majorCities.some(c => s.includes(c.toLowerCase().replace(/\s+/g, '-')));
     return hasMajorCity ? 100 : 90;
   }
-  // 3-day itineraries
   if (/3-days?-(?:in|itinerary)/.test(s)) return 80;
   if (/3-days?/.test(s)) return 75;
-  // 1-week itineraries
   if (/1-week|one-week|7-days?/.test(s)) return 75;
-  // Weekend itineraries
   if (/weekend/.test(s)) return 70;
-  // Country-level
-  if (/one-week|1-week/.test(s) && !s.includes('in-')) return 70;
-  // Things to do
   if (s.includes('things-to-do') || s.includes('top-things')) return 68;
-  // Guides
   if (s.includes('guide') || s.includes('travel-guide')) return 60;
-  // Everything else
   return 40;
 }
 
@@ -85,7 +92,7 @@ export function scanCandidates(options: {
     }
     if (options.country && !slug.toLowerCase().includes(options.country.toLowerCase())) continue;
 
-    const priority = scorePriority(slug, majorCities);
+    const priority = scorePriority(slug, majorCities, cfg);
     candidates.push({
       slug,
       filePath: path.join(postsDir, file),
@@ -110,6 +117,7 @@ export function publishBatch(candidates: PublishCandidate[], dryRun = false): { 
   const today = new Date().toISOString().split('T')[0];
   const errors: string[] = [];
   let published = 0;
+  const publishedCandidates: PublishCandidate[] = [];
 
   for (const c of candidates) {
     try {
@@ -136,6 +144,7 @@ export function publishBatch(candidates: PublishCandidate[], dryRun = false): { 
         console.log(`     [DRY RUN] Would publish: ${c.slug}`);
       }
       published++;
+      publishedCandidates.push(c);
 
       // IndexNow ping
       if (!dryRun && cfg.publishing?.indexnowHost) {
@@ -151,7 +160,7 @@ export function publishBatch(candidates: PublishCandidate[], dryRun = false): { 
   // Git commit + push
   if (published > 0 && !dryRun) {
     try {
-      gitCommit(published, candidates, cfg);
+      gitCommit(published, publishedCandidates, cfg);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Unknown error';
       errors.push(`git: ${msg}`);
@@ -174,20 +183,21 @@ function gitCommit(count: number, candidates: PublishCandidate[], cfg: ReturnTyp
 
   // Configure git user if not set
   try {
-    execSync(`git config user.email "${email}"`, { stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.email', email], { stdio: 'ignore' });
   } catch {}
   try {
-    execSync(`git config user.name "${name}"`, { stdio: 'ignore' });
+    execFileSync('git', ['config', 'user.name', name], { stdio: 'ignore' });
   } catch {}
 
-  execSync(`git add ${files.map(f => `"${f}"`).join(' ')}`, { stdio: 'inherit' });
-  execSync(`git commit -m "${msg}"`, { stdio: 'inherit' });
-  execSync(`git push origin ${branch}`, { stdio: 'inherit' });
+  execFileSync('git', ['add', ...files], { stdio: 'inherit' });
+  execFileSync('git', ['commit', '-m', msg], { stdio: 'inherit' });
+  execFileSync('git', ['push', 'origin', branch], { stdio: 'inherit' });
   console.log(`     📤 Pushed to ${branch}`);
 }
 
 function pingIndexNow(baseUrl: string, slug: string, key: string): void {
-  const url = `${baseUrl.replace(/\/$/, '')}/blog/${slug}/`;
+  const blogPrefix = loadConfig().blogPrefix || '/blog/';
+  const url = `${baseUrl.replace(/\/$/, '')}${blogPrefix}${slug}/`;
   const body = JSON.stringify({
     host: baseUrl.replace(/^https?:\/\//, ''),
     key,
@@ -196,10 +206,16 @@ function pingIndexNow(baseUrl: string, slug: string, key: string): void {
   });
 
   try {
-    execSync(
-      `curl -s -X POST 'https://api.indexnow.org/indexnow' -H 'Content-Type: application/json' -d '${body}'`,
-      { stdio: 'ignore', timeout: 10000 }
-    );
+    execFileSync('curl', [
+      '-s',
+      '-X',
+      'POST',
+      'https://api.indexnow.org/indexnow',
+      '-H',
+      'Content-Type: application/json',
+      '-d',
+      body,
+    ], { stdio: 'ignore', timeout: 10000 });
     console.log(`     📡 IndexNow pinged: ${url}`);
   } catch {
     // Non-critical — search engines will find it eventually

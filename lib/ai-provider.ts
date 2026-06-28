@@ -17,8 +17,39 @@
  */
 import { geminiChat, geminiChatWithRetry } from './gemini-client';
 import { openrouterChatWithRetry, getModelConfig, hasOpenRouterKey } from './openrouter-client';
+import { loadConfig } from './config';
 
 type ProviderName = 'gemini' | 'openrouter';
+
+// ─── Per-run call counter ─────────────────────────────────────────────────────
+// Shared across all aiChat calls in a single pipeline run.
+const _runCounter = { count: 0 };
+
+/** Reset the run-level call counter (call at the start of each pipeline run). */
+export function resetAiCallCounter(): void {
+  _runCounter.count = 0;
+}
+
+/** Current call count for the run. */
+export function getAiCallCount(): number {
+  return _runCounter.count;
+}
+
+/** Check if the run-level budget is exceeded. Returns true if the call should proceed. */
+function checkBudget(task: string): boolean {
+  try {
+    const cfg = loadConfig();
+    const max = cfg.aiLimits?.maxCallsPerRun;
+    if (max && _runCounter.count >= max) {
+      console.log(`     ⚠️  AI budget: ${_runCounter.count}/${max} calls used — skipping ${task}`);
+      return false;
+    }
+  } catch {
+    // config not loaded yet — allow
+  }
+  _runCounter.count++;
+  return true;
+}
 
 function getPreferredProvider(): ProviderName {
   const env = process.env.AI_PROVIDER?.toLowerCase().trim();
@@ -59,6 +90,7 @@ export async function aiChat(
   prompt: string,
   task = 'content-audit'
 ): Promise<string | null> {
+  if (!checkBudget(task)) return null;
   const preferred = getPreferredProvider();
 
   // Try preferred provider
@@ -100,6 +132,7 @@ export async function aiChatWithRetry(
   task = 'content-audit',
   maxRetries = 3
 ): Promise<string | null> {
+  if (!checkBudget(task)) return null;
   const preferred = getPreferredProvider();
 
   // Try preferred provider with retries

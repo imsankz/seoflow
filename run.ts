@@ -2,57 +2,285 @@
 /**
  * SeoFlow — SEO Pipeline Orchestrator
  *
- * Pipeline modes (--mode):
- *   meta, links, images, keywords, neuron, content, review, factcheck, all
+ * Verb-based commands (preferred):
+ *   seoflow init                           Interactive setup
+ *   seoflow status                         Show pipeline state, GSC coverage, learning summary
+ *   seoflow audit [slug]                   Run the full pipeline (or just one post)
+ *   seoflow learn                          Show learning insights in a readable table
+ *   seoflow learning export [file]         Export learning.json + gsc-baselines.json
+ *   seoflow learning import <file>         Import a previously exported learning bundle
+ *   seoflow generate                       Generate new posts from keywords
+ *   seoflow publish [--go]                 Publish unpublished posts
  *
- * Utility commands:
- *   --mode generate          Generate new posts from keywords
- *   --mode publish           Publish unpublished posts
- *   --mode publish --go      Actually publish (no dry run)
- *
- * Global flags:
- *   --slug <slug>            Process/publish only this post
+ * Legacy flag-based syntax (still supported):
+ *   --mode <meta|links|images|keywords|neuron|content|review|factcheck|all>
+ *   --slug <slug>            Process only this post
  *   --dry-run                Preview without writing
  *   --limit <n>              Max posts to process (default 10)
  *   --reset-slug <slug>      Re-audit a previously completed post
- *
- * Examples:
- *   npx tsx .seoflow/run.ts                                          # Pipeline: top 10
- *   npx tsx .seoflow/run.ts --mode generate --limit 3                # Generate 3 posts
- *   npx tsx .seoflow/run.ts --mode publish --slug my-post            # Publish one post
- *   npx tsx .seoflow/run.ts --mode publish --go                      # Publish top 5
  */
 
 import fs from 'fs';
 import path from 'path';
 import { loadEnv } from './lib/env-loader';
-import { loadConfig, getPostsDir, getAuditLogPath, getSiteUrl } from './lib/config';
-import { parseGscPages, parseGscQueries } from './lib/gsc-parser';
+import { loadConfig, getPostsDir, getAuditLogPath } from './lib/config';
+import { parseGscPages, parseGscQueries, detectGscSource, gscSourceLabel } from './lib/gsc-parser';
 import { loadAuditLog, saveAuditLog, isAlreadyDone } from './lib/audit-log';
-import { scorePriority } from './lib/mdx-parser';
-import { logAiStatus } from './lib/ai-provider';
+import { logAiStatus, resetAiCallCounter, getAiCallCount } from './lib/ai-provider';
 import { hasNeuronKey, getNeuronProjectId } from './lib/neuronwriter';
-import { getLearningSummary } from './lib/learning';
+import { getLearningSummary, predictPriority, recordContentSnapshot } from './lib/learning';
 import { generateBatch, ContentGap } from './lib/generator';
 import { scanCandidates, publishBatch } from './lib/publisher';
+import { printValidation } from './lib/validator';
+import type { NeuronData } from './lib/types';
 
-const args = process.argv.slice(2);
-const DRY_RUN = args.includes('--dry-run');
-const LIMIT = (() => { const i = args.indexOf('--limit'); return i !== -1 ? parseInt(args[i + 1]) || 10 : 10; })();
-const SLUG_FILTER = (() => { const i = args.indexOf('--slug'); return i !== -1 ? args[i + 1] : null; })();
-const RESET_SLUG = (() => { const i = args.indexOf('--reset-slug'); return i !== -1 ? args[i + 1] : null; })();
-const MODE = (() => { const i = args.indexOf('--mode'); return i !== -1 ? args[i + 1] : 'all'; })();
+// ─── Args ────────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+const rawArgs = process.argv.slice(2);
+
+// Verb-based: first arg is a word without leading '--'
+const VERB = rawArgs[0] && !rawArgs[0].startsWith('--') ? rawArgs[0] : null;
+const VERB_ARG = rawArgs[1] && !rawArgs[1].startsWith('--') ? rawArgs[1] : null;
+
+const DRY_RUN = rawArgs.includes('--dry-run');
+const LIMIT = (() => { const i = rawArgs.indexOf('--limit'); return i !== -1 ? parseInt(rawArgs[i + 1]) || 10 : 10; })();
+const SLUG_FILTER = (() => {
+  // Support: seoflow audit <slug>  OR  --slug <slug>
+  if (VERB === 'audit' && VERB_ARG) return VERB_ARG;
+  const i = rawArgs.indexOf('--slug');
+  return i !== -1 ? rawArgs[i + 1] : null;
+})();
+const RESET_SLUG = (() => { const i = rawArgs.indexOf('--reset-slug'); return i !== -1 ? rawArgs[i + 1] : null; })();
+const MODE = (() => {
+  // Verb → mode mapping
+  if (VERB === 'audit') return 'all';
+  if (VERB === 'generate') return 'generate';
+  if (VERB === 'publish') return 'publish';
+  const i = rawArgs.indexOf('--mode');
+  return i !== -1 ? rawArgs[i + 1] : 'all';
+})();
+
+// ─── Verb: init ───────────────────────────────────────────────────────────────
+
+async function cmdInit(): Promise<void> {
+  const configPath = path.join(process.cwd(), 'seoflow.config.json');
+  if (fs.existsSync(configPath)) {
+    console.log('✓ seoflow.config.json already exists');
+    console.log('  Delete it and re-run to reconfigure, or edit it directly.');
+    return;
+  }
+  console.log('\n  Run the interactive installer:\n');
+  console.log('  bash <(curl -s https://raw.githubusercontent.com/imsankz/seoflow/main/install.sh)\n');
+  console.log('  Or copy the template and fill it in:');
+    const templatePath = path.join(process.cwd(), '.seoflow', 'seoflow.config.template.json');
+  if (fs.existsSync(templatePath)) {
+    console.log(`  cp ${templatePath} seoflow.config.json\n`);
+  }
+}
+
+// ─── Verb: status ─────────────────────────────────────────────────────────────
+
+async function cmdStatus(): Promise<void> {
   loadEnv();
+  const cfg = loadConfig();
+  const auditLog = loadAuditLog();
+  await detectGscSource();
+
+  const postsDir = getPostsDir();
+  const allFiles = fs.existsSync(postsDir) ? fs.readdirSync(postsDir).filter(f => f.endsWith('.mdx')) : [];
+  const posts = auditLog.posts || {};
+  const completed = Object.values(posts).filter(p => p.status === 'completed').length;
+  const pending = allFiles.length - completed;
+  const flagged = Object.entries(posts).filter(([, p]) => p.flagged_for_manual);
+  const gscPages = await parseGscPages(cfg.gscDays || 28);
+
+  const lines: string[] = [
+    `\n📊 SeoFlow Status — ${cfg.siteName}`,
+    '─'.repeat(50),
+    `  Posts total:    ${allFiles.length}`,
+    `  Completed:      ${completed}`,
+    `  Pending:        ${pending}`,
+    `  Flagged:        ${flagged.length}`,
+    `  GSC pages:      ${Object.keys(gscPages).length}`,
+    `  GSC source:     ${gscSourceLabel()}`,
+    `  Last run:       ${auditLog.last_run || 'never'}`,
+  ];
+
+  if (cfg.aiLimits?.maxCallsPerRun) {
+    lines.push(`  AI budget:      ${cfg.aiLimits.maxCallsPerRun} calls/run, ${cfg.aiLimits.maxCallsPerPost || '∞'} calls/post`);
+  }
+
+  // Enabled steps
+  if (cfg.aiLimits?.enabledSteps) {
+    lines.push(`  AI steps:       ${cfg.aiLimits.enabledSteps.join(', ')}`);
+  }
+
+  console.log(lines.join('\n'));
+
+  if (flagged.length > 0) {
+    console.log('\n⚠️  Flagged for manual review:');
+    for (const [slug] of flagged.slice(0, 10)) console.log(`    • ${slug}`);
+  }
+
+  // Learning summary
+  const lessons = getLearningSummary();
+  if (lessons.length > 0) {
+    console.log('\n🧠 Learning summary:');
+    for (const l of lessons) console.log(l);
+  }
+
+  console.log('');
+}
+
+// ─── Verb: learn ─────────────────────────────────────────────────────────────
+
+function cmdLearn(): void {
+  loadEnv();
+  loadConfig(); // ensure config is loaded for paths
+
+  const learningPath = path.join(
+    path.dirname(getAuditLogPath()),
+    'learning.json'
+  );
+
+  if (!fs.existsSync(learningPath)) {
+    console.log('\n⚠️  No learning data yet. Run the pipeline on some posts first.\n');
+    return;
+  }
+
+  const db = JSON.parse(fs.readFileSync(learningPath, 'utf8'));
+
+  console.log('\n🧠 SeoFlow Learning Insights');
+  console.log('─'.repeat(60));
+
+  // Step effectiveness table
+  const steps = Object.entries(db.steps || {}) as [string, any][];
+  if (steps.length > 0) {
+    console.log('\nStep Effectiveness:');
+    console.log('  Step          Runs  Success  Avg Pos Change  Best Categories');
+    console.log('  ' + '─'.repeat(70));
+    for (const [name, s] of steps) {
+      if (s.runs < 1) continue;
+      const pct = s.runs > 0 ? Math.round((s.improved / s.runs) * 100) : 0;
+      const pos = s.avgPositionChange?.toFixed(1) ?? '0.0';
+      const dir = (s.avgPositionChange ?? 0) < 0 ? '↑' : '↓';
+      const cats = (s.bestForCategories || []).slice(0, 3).join(', ') || '—';
+      console.log(`  ${name.padEnd(14)}${String(s.runs).padEnd(6)}${String(pct + '%').padEnd(9)}${(dir + Math.abs(parseFloat(pos))).padEnd(16)}${cats}`);
+    }
+  }
+
+  // Content pattern insights
+  const patterns = Object.entries(db.patterns || {}) as [string, any[]][];
+  if (patterns.length > 0) {
+    console.log('\nContent Patterns (what correlates with higher CTR):');
+    console.log('  ' + '─'.repeat(60));
+    for (const [dim, insights] of patterns) {
+      const best = insights?.[0];
+      if (!best || best.sampleSize < 3) continue;
+      console.log(`  ${dim.padEnd(18)} best range: ${best.range.padEnd(12)} → ${best.avgCtr.toFixed(1)}% CTR, pos ${best.avgPosition.toFixed(1)} (n=${best.sampleSize})`);
+    }
+  }
+
+  console.log(`\n  Data file: ${learningPath}`);
+  console.log('  Tip: seoflow learning export  →  share with teammates or other sites\n');
+}
+
+// ─── Verb: learning export/import ────────────────────────────────────────────
+
+function cmdLearningExport(outFile?: string): void {
+  loadEnv();
+  loadConfig();
+
+  const dataDir = path.dirname(getAuditLogPath());
+  const learningPath = path.join(dataDir, 'learning.json');
+  const baselinesPath = path.join(dataDir, 'gsc-baselines.json');
+
+  const bundle: Record<string, any> = {
+    exportedAt: new Date().toISOString(),
+    version: '2.0',
+  };
+
+  if (fs.existsSync(learningPath)) {
+    bundle.learning = JSON.parse(fs.readFileSync(learningPath, 'utf8'));
+  }
+  if (fs.existsSync(baselinesPath)) {
+    bundle.gscBaselines = JSON.parse(fs.readFileSync(baselinesPath, 'utf8'));
+  }
+
+  const dest = outFile || `seoflow-learning-${new Date().toISOString().split('T')[0]}.json`;
+  fs.writeFileSync(dest, JSON.stringify(bundle, null, 2));
+  console.log(`\n✅ Learning data exported to: ${dest}`);
+  console.log('   Import on another machine: seoflow learning import ' + dest + '\n');
+}
+
+function cmdLearningImport(inFile: string): void {
+  loadEnv();
+  loadConfig();
+
+  if (!inFile || !fs.existsSync(inFile)) {
+    console.error(`\n❌ File not found: ${inFile || '(no file specified)'}`);
+    console.error('   Usage: seoflow learning import <file.json>\n');
+    process.exit(1);
+  }
+
+  const bundle = JSON.parse(fs.readFileSync(inFile, 'utf8'));
+  const dataDir = path.dirname(getAuditLogPath());
+
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+  if (bundle.learning) {
+    fs.writeFileSync(path.join(dataDir, 'learning.json'), JSON.stringify(bundle.learning, null, 2));
+    console.log('  ✅ Imported learning.json');
+  }
+  if (bundle.gscBaselines) {
+    fs.writeFileSync(path.join(dataDir, 'gsc-baselines.json'), JSON.stringify(bundle.gscBaselines, null, 2));
+    console.log('  ✅ Imported gsc-baselines.json');
+  }
+  console.log(`\n✅ Learning data imported from: ${inFile}\n`);
+}
+
+// ─── Main pipeline ────────────────────────────────────────────────────────────
+
+export async function runPipeline(): Promise<void> {
+
+  // Verb-based dispatch (no config required for init)
+  if (VERB === 'init') { await cmdInit(); return; }
+
+  loadEnv();
+
+  if (VERB === 'status') { await cmdStatus(); return; }
+  if (VERB === 'learn') { cmdLearn(); return; }
+  if (VERB === 'learning') {
+    const sub = rawArgs[1];
+    if (sub === 'export') { cmdLearningExport(rawArgs[2]); return; }
+    if (sub === 'import') { cmdLearningImport(rawArgs[2]); return; }
+    console.error('Usage: seoflow learning export [file]  |  seoflow learning import <file>');
+    process.exit(1);
+  }
+
   const cfg = loadConfig();
 
   console.log(`\n🔍 ${cfg.siteName} — SeoFlow Pipeline`);
-  console.log(`   Mode: ${MODE} | Limit: ${SLUG_FILTER ? 1 : LIMIT} | Dry run: ${DRY_RUN}\n`);
+  console.log(`   Mode: ${MODE} | Limit: ${SLUG_FILTER ? 1 : LIMIT} | Dry run: ${DRY_RUN}`);
+
+  // AI cost guardrail banner
+  if (cfg.aiLimits?.maxCallsPerRun) {
+    const limit = cfg.aiLimits.maxCallsPerRun;
+    const perPost = cfg.aiLimits.maxCallsPerPost || 3;
+    const estPosts = Math.min(SLUG_FILTER ? 1 : LIMIT, Math.floor(limit / perPost));
+    console.log(`   AI budget: max ${limit} calls/run (~${estPosts} posts with AI, ${perPost} calls each)`);
+  }
+  console.log('');
+
+  resetAiCallCounter();
 
   const auditLog = loadAuditLog();
-  const gscPages = parseGscPages();
-  const gscQueries = parseGscQueries();
+
+  await detectGscSource();
+  console.log(`📊 GSC source: ${gscSourceLabel()}`);
+
+  const gscPages = await parseGscPages(cfg.gscDays || 28);
+  const gscQueries = await parseGscQueries(cfg.gscDays || 28);
   const postsDir = getPostsDir();
   const auditLogPath = getAuditLogPath();
 
@@ -70,32 +298,34 @@ async function main(): Promise<void> {
     return;
   }
 
+  // ── Validation ─────────────────────────────────────────────────────────
+  printValidation(cfg);
+
   if (hasNeuronKey()) console.log(`📡 NeuronWriter: ${getNeuronProjectId()}`);
   else console.log('⚠️  NEURONWRITER_API_KEY not set');
   logAiStatus();
 
   // ── Generate mode ──────────────────────────────────────────────────────
   if (MODE === 'generate') {
-    const country = (() => { const i = args.indexOf('--country'); return i !== -1 ? args[i + 1] : null; })();
-    const gaps: ContentGap[] = [
-      { keyword: SLUG_FILTER || 'top things to do', type: 'things-to-do', destination: country || '', country: country || '' },
-    ];
-    // If no specific gap, prompt user via info
+    const country = (() => { const i = rawArgs.indexOf('--country'); return i !== -1 ? rawArgs[i + 1] : null; })();
     if (!SLUG_FILTER && !country) {
       console.log('   Provide --slug <keyword> or --country <name> to generate content');
-      console.log('   Example: --slug "best restaurants in prague" --country "Czech Republic"');
+      console.log('   Example: seoflow generate --slug "best restaurants in prague" --country "Czech Republic"');
       console.log('');
       return;
     }
+    const gaps: ContentGap[] = [
+      { keyword: SLUG_FILTER || 'top things to do', type: 'things-to-do', destination: country || '', country: country || '' },
+    ];
     const results = await generateBatch(gaps, LIMIT);
     console.log(`\n✅ Generated ${results.length} posts in ${postsDir}`);
-    console.log(`   Run \`npm run seo:audit -- --slug <slug>\` to optimize them.`);
+    console.log(`   Run \`seoflow audit <slug>\` to optimize them.`);
     return;
   }
 
   // ── Publish mode ───────────────────────────────────────────────────────
   if (MODE === 'publish') {
-    const goFlag = args.includes('--go');
+    const goFlag = rawArgs.includes('--go');
     if (!goFlag) {
       console.log('⚠️  Dry run mode. Use --go to actually publish.');
       console.log('');
@@ -107,9 +337,7 @@ async function main(): Promise<void> {
       return;
     }
     console.log(`📋 ${candidates.length} unpublished posts found:\n`);
-    for (const c of candidates) {
-      console.log(`   ${c.priority} ${c.slug}`);
-    }
+    for (const c of candidates) console.log(`   ${c.priority} ${c.slug}`);
     console.log('');
     const result = publishBatch(candidates, !goFlag);
     console.log(`\n✅ Published ${result.published} posts (${result.errors.length} errors)`);
@@ -123,12 +351,18 @@ async function main(): Promise<void> {
   const files = fs.readdirSync(postsDir).filter(f => f.endsWith('.mdx'));
   console.log(`📁 ${files.length} posts\n`);
 
-  let candidates = files.map(f => ({
-    slug: f.replace('.mdx', ''),
-    filePath: path.join(postsDir, f),
-    priority: scorePriority(f.replace('.mdx', ''), gscPages),
-    gsc: gscPages[f.replace('.mdx', '')] || {},
-  }));
+  let candidates = files.map(f => {
+    const slug = f.replace('.mdx', '');
+    const gsc = gscPages[slug] || {};
+    const prediction = predictPriority(slug, gsc);
+    return {
+      slug,
+      filePath: path.join(postsDir, f),
+      priority: prediction.totalScore || 0,
+      gsc,
+      patterns: prediction.patterns,
+    };
+  });
 
   if (SLUG_FILTER) {
     candidates = candidates.filter(c => c.slug === SLUG_FILTER);
@@ -142,28 +376,82 @@ async function main(): Promise<void> {
 
   console.log(`🎯 ${candidates.length} posts\n${'─'.repeat(60)}`);
 
-  const results: any[] = [];
+  const withPatterns = candidates.filter(c => c.patterns && c.patterns.length > 0);
+  if (withPatterns.length > 0 && MODE === 'all') {
+    console.log('\n🧠 Predictive insights:');
+    for (const c of withPatterns.slice(0, 3)) {
+      for (const p of c.patterns) console.log(`   ${c.slug}: ${p}`);
+    }
+    console.log('');
+  }
+
+  type ProcessResult = {
+    slug: string;
+    changes: number;
+    before: Record<string, unknown>;
+    after: {
+      word_count?: number;
+      internal_links?: number;
+      images?: number;
+      meta_description_length?: number;
+    };
+    neuronData: NeuronData | null;
+  };
+
+  const results: ProcessResult[] = [];
   const { processPost } = await import('./pipeline/steps');
   for (const c of candidates) {
     const r = await processPost(c.slug, c.filePath, gscPages, auditLog, { mode: MODE, skipAlreadyDone: !SLUG_FILTER && MODE === 'all', dryRun: DRY_RUN });
     results.push(r);
+
+    if (!DRY_RUN && r.after) {
+      try {
+        const raw = fs.readFileSync(c.filePath, 'utf8');
+        const parsed = await import('./lib/mdx-parser');
+        const fm = parsed.parseMdx(raw).frontmatter;
+        recordContentSnapshot(c.slug, {
+          title: fm.title || c.slug,
+          titleLength: (fm.title || '').length,
+          descLength: (fm.description || '').length,
+          wordCount: r.after.word_count || 0,
+          imageCount: r.after.images || 0,
+          imageDensity: r.after.word_count > 0 ? (r.after.images || 0) / (r.after.word_count / 1000) : 0,
+          linkCount: r.after.internal_links || 0,
+          schema: fm.schema || '',
+          category: fm.category || '',
+        });
+      } catch {}
+    }
+
     saveAuditLog(auditLog, DRY_RUN);
   }
 
-  const total = results.reduce((s: number, r: any) => s + r.changes, 0);
-  const improved = results.filter((r: any) => r.changes > 0);
-  const completed = Object.values(auditLog.posts).filter(e => e.status === 'completed').length;
+  let total = 0;
+  let completed = 0;
+  let improved = 0;
+  try {
+    total = results.reduce((s, r) => s + (r?.changes || 0), 0);
+    improved = results.filter((r) => r.changes > 0).length;
+    completed = auditLog?.posts ? Object.values(auditLog.posts).filter(e => e?.status === 'completed').length : 0;
+  } catch {}
+
   console.log(`\n${'═'.repeat(60)}\n📋 SUMMARY\n${'═'.repeat(60)}`);
-  console.log(`  Processed: ${results.length} | Improved: ${improved.length} | Changes: ${total}`);
+  console.log(`  Processed: ${results.length} | Improved: ${improved} | Changes: ${total}`);
   console.log(`  Pending: ${files.length - completed}`);
 
-  const flagged = Object.entries(auditLog.posts).filter(([, v]) => v.flagged_for_manual);
+  // AI call usage summary
+  const aiCalls = getAiCallCount();
+  if (aiCalls > 0) {
+    const budget = cfg.aiLimits?.maxCallsPerRun;
+    console.log(`  AI calls: ${aiCalls}${budget ? `/${budget}` : ''}`);
+  }
+
+  const flagged = auditLog?.posts ? Object.entries(auditLog.posts).filter(([, v]) => v.flagged_for_manual) : [];
   if (flagged.length) {
     console.log(`\n⚠️  Manual review (${flagged.length}):`);
     for (const [s] of flagged.slice(0, 10)) console.log(`    • ${s}`);
   }
 
-  // Learning insights
   const lessons = getLearningSummary();
   if (lessons.length > 0) {
     console.log(`\n🧠 Learning (step effectiveness):`);
@@ -180,4 +468,4 @@ async function main(): Promise<void> {
   if (!DRY_RUN) console.log(`✅ Log: ${auditLogPath}`);
 }
 
-main().catch((e: Error) => { console.error('Fatal:', e.message); process.exit(1); });
+runPipeline().catch((e: Error) => { console.error('Fatal:', e?.message || e, e?.stack?.split('\n').slice(0,3).join('\n') || ''); process.exit(1); });

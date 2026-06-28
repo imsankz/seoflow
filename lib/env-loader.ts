@@ -5,7 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 function findRoot(): string {
-  let dir = path.resolve(__dirname);
+  let dir = process.cwd();
   for (let i = 0; i < 10; i++) {
     if (fs.existsSync(path.join(dir, 'seoflow.config.json'))) return dir;
     if (fs.existsSync(path.join(dir, '.env.local'))) return dir;
@@ -13,7 +13,7 @@ function findRoot(): string {
     if (p === dir) break;
     dir = p;
   }
-  return path.resolve(__dirname, '..', '..');
+  return process.cwd();
 }
 
 const ROOT = findRoot();

@@ -2,6 +2,7 @@
  * MDX parsing and content analysis utilities.
  */
 import type { Frontmatter, Section } from './types';
+import { getSiteUrl } from './config';
 
 /**
  * Parse an MDX string into frontmatter and body content.
@@ -100,7 +101,8 @@ export function countImages(content: string): number {
 export function extractExistingLinks(content: string): Set<string> {
   const links = new Set<string>();
   for (const m of content.matchAll(/\[.*?\]\(([^)]+)\)/g)) {
-    const href = m[1].replace(/^https?:\/\/(www\.)?chasingwhereabouts\.com/, '');
+    const siteUrl = getSiteUrl().replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const href = m[1].replace(new RegExp(`^https?://(www\\.)?${siteUrl.replace(/\./g, '\\.')}`), '');
     links.add(href);
   }
   return links;

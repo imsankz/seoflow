@@ -3,13 +3,51 @@
   "siteUrl": "yourdomain.com",
   "author": "Your Name",
   "authorLocation": "Your City, Country",
-  "writingSample": "A paragraph showing your natural writing voice. Short sentences. Specific observations. This gets injected into AI prompts to match your tone.",
+
+  "_writingSample_note": "Use writingSample (single string) OR writingSamples (per content-type map)",
+  "writingSample": "A paragraph showing your natural writing voice. Short sentences. Specific observations. Injected into AI prompts to match your tone.",
+  "writingSamples": {
+    "guide": "Your voice sample for destination guides — practical, first-person, specific prices.",
+    "review": "Your voice sample for reviews — honest, comparative, concrete recommendations.",
+    "itinerary": "Your voice sample for itineraries — day-by-day structure, timing advice.",
+    "default": "Fallback voice sample used when content type does not match above keys."
+  },
+
   "postsDir": "src/content/posts",
+  "blogPrefix": "/blog/",
+  "gscDays": 28,
+
+  "_gsc_note": "gscPagesCsv/gscQueriesCsv are fallbacks — SeoFlow prefers the live GSC API via ADC",
   "gscPagesCsv": "gsc_data/Seiten.csv",
   "gscQueriesCsv": "gsc_data/Suchanfragen.csv",
+
   "auditLogPath": ".seoflow/data/audit-log.json",
   "keywordCachePath": ".seoflow/data/keyword-cache.json",
   "destinationPattern": "/destinations/{country}",
+
+  "_contentFormat_note": "mdx (default) | markdown | wordpress",
+  "contentFormat": "mdx",
+
+  "_domain_note": "Set these to match your content domain — used in AI prompts and image search",
+  "imageSearchFallback": "travel",
+  "defaultCategory": "travel",
+  "contentDomain": "travel blog",
+
+  "_aiLimits_note": "Protects against runaway AI costs in bulk runs",
+  "aiLimits": {
+    "maxCallsPerRun": 50,
+    "maxCallsPerPost": 3,
+    "enabledSteps": ["keywords", "content", "review", "factcheck"]
+  },
+
+  "_publishPriority_note": "Override built-in travel slug scoring — remove this block to use travel defaults",
+  "publishPriority": [
+    { "pattern": "pass-review", "score": 100 },
+    { "pattern": "3-days?-in", "score": 80 },
+    { "pattern": "guide", "score": 60 },
+    { "pattern": "things-to-do", "score": 68 }
+  ],
+
   "tools": [
     { "keywords": ["budget", "cost", "how much", "cheap", "per day", "price"], "path": "/tools/budget-calculator", "anchor": "budget calculator" },
     { "keywords": ["packing", "what to bring", "luggage", "essentials"], "path": "/tools/packing-checklist", "anchor": "packing checklist" },
@@ -19,12 +57,14 @@
   "bookings": [
     { "keywords": ["ferry", "boat trip", "cruise"], "path": "/book", "anchor": "book tickets" }
   ],
+
   "generation": {
     "defaultSchema": "TravelGuide",
     "defaultCategory": "travel",
     "wordCountMin": 1500,
     "wordCountMax": 2500
   },
+
   "publishing": {
     "gitEmail": "noreply@yoursite.com",
     "gitName": "Site Publisher",
