@@ -2,7 +2,7 @@
 """
 Generate an HTML report for SEO drift comparison results.
 
-Uses the claude-seo color palette for severity-coded cards.
+Uses the seoflow color palette for severity-coded cards.
 
 Usage:
     python drift_report.py <comparison_json_file> [--output report.html]

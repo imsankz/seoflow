@@ -40,10 +40,10 @@ Navigate to **APIs & Services > Library** and enable:
 ## Step 4: Create a Service Account
 
 1. **IAM & Admin > Service Accounts > Create Service Account**
-2. Name: `claude-seo` (or similar)
+2. Name: `seoflow` (or similar)
 3. Skip optional permissions steps
 4. Click on the created service account > **Keys > Add Key > Create new key > JSON**
-5. Download the JSON file and store it securely (e.g., `~/.config/claude-seo/service_account.json`)
+5. Download the JSON file and store it securely (e.g., `~/.config/seoflow/service_account.json`)
 
 The JSON file looks like:
 ```json
@@ -52,7 +52,7 @@ The JSON file looks like:
   "project_id": "your-project-id",
   "private_key_id": "...",
   "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
-  "client_email": "claude-seo@your-project.iam.gserviceaccount.com",
+  "client_email": "seoflow@your-project.iam.gserviceaccount.com",
   "client_id": "...",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
   "token_uri": "https://oauth2.googleapis.com/token"
@@ -82,14 +82,14 @@ The `client_email` field is what you add to GSC and GA4.
 ## Step 7: Create Config File
 
 ```bash
-mkdir -p ~/.config/claude-seo
+mkdir -p ~/.config/seoflow
 ```
 
-Save to `~/.config/claude-seo/google-api.json`:
+Save to `~/.config/seoflow/google-api.json`:
 
 ```json
 {
-  "service_account_path": "~/.config/claude-seo/service_account.json",
+  "service_account_path": "~/.config/seoflow/service_account.json",
   "api_key": "<GOOGLE_API_KEY>",
   "default_property": "sc-domain:example.com",
   "ga4_property_id": "properties/123456789"
@@ -117,7 +117,7 @@ Credential Tier: 2 -- Full (API key + Service Account + GA4)
   [OK] Chrome UX Report (CrUX) API
   [OK] CrUX History API
   [OK] Google Search Console API
-       Service account: claude-seo@your-project.iam.gserviceaccount.com
+       Service account: seoflow@your-project.iam.gserviceaccount.com
   [OK] Google Indexing API v3
   [OK] GA4 Data API v1beta
 ```

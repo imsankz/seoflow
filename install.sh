@@ -85,7 +85,7 @@ AGENTS=(
 )
 
 for agent in "${AGENTS[@]}"; do
-  curl -sSfL "$REPO/.claude/claude-seo/agents/${agent}.md" \
+  curl -sSfL "$REPO/.claude/seoflow/agents/${agent}.md" \
     -o "$SEOFLOW_DIR/agents/${agent}.md" 2>/dev/null \
     || warn "Could not fetch agent ${agent}"
 done
@@ -105,7 +105,7 @@ SKILLS=(
 
 for skill in "${SKILLS[@]}"; do
   mkdir -p "$SEOFLOW_DIR/skills/$skill"
-  curl -sSfL "$REPO/.claude/claude-seo/skills/${skill}/SKILL.md" \
+  curl -sSfL "$REPO/.claude/seoflow/skills/${skill}/SKILL.md" \
     -o "$SEOFLOW_DIR/skills/$skill/SKILL.md" 2>/dev/null \
     || warn "Could not fetch skill ${skill}/SKILL.md"
 done
@@ -148,7 +148,7 @@ success "Python scripts downloaded (${#PYTHON_SCRIPTS[@]} scripts)"
 
 
 # ─── Step 5: Rewrite script paths in agents ───────────────────────────────────
-# Agents from claude-seo reference `scripts/` (relative to their install root).
+# Agents from seoflow reference `scripts/` (relative to their install root).
 # After SeoFlow install they live at `.seoflow/agents/` and scripts at `.seoflow/scripts/`.
 # We rewrite all path references so agents work regardless of the tool they're
 # copied into.

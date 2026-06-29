@@ -43,7 +43,7 @@ MOZ_BASE = "https://api.moz.com"
 
 # Rate limit: 1 request per 10 seconds on free tier
 RATE_LIMIT_DELAY = 10
-RATE_LIMIT_FILE = os.path.expanduser("~/.cache/claude-seo/moz_last_request.lock")
+RATE_LIMIT_FILE = os.path.expanduser("~/.cache/seoflow/moz_last_request.lock")
 
 
 def _moz_basic_auth_header(api_key: str) -> str | None:

@@ -73,7 +73,7 @@ powering direct buying from AI Mode and Gemini.
 Exact identifiers are governed by the live spec. The pattern is
 `dev.ucp.<domain>.<verb>` with semantic versioning.
 
-## What claude-seo audits
+## What seoflow audits
 
 `/seo ecommerce <url>` should report:
 

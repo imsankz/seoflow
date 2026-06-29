@@ -4,7 +4,7 @@
 
 `/llms.txt` is **not currently consumed by any major AI search system**.
 Generate one anyway as low-cost optionality, but do not present it as a
-ranking or citation lever in any claude-seo report.
+ranking or citation lever in any seoflow report.
 
 ## Primary-source evidence
 
@@ -28,12 +28,12 @@ For a non-developer business site, the value is purely defensive: zero
 cost, possible future-optionality if a major AI provider eventually
 adopts it.
 
-## How claude-seo treats `llms.txt`
+## How seoflow treats `llms.txt`
 
 - `seo-geo` audits **report presence** of `/llms.txt` and `/llms-full.txt`.
 - The audit notes whether the file is well-formed (Mintlify-style markdown).
 - The audit explicitly does **not** assign citation-ranking weight to it.
-- If the user asks to generate one, claude-seo produces a minimal valid
+- If the user asks to generate one, seoflow produces a minimal valid
   example and a banner stating "no major LLM provider has confirmed
   consumption as of May 2026; ship for optionality, not for citation".
 

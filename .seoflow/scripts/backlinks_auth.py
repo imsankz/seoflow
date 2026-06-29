@@ -37,8 +37,8 @@ except ImportError as _import_exc:
         "Install with: pip install -r requirements.txt"
     ) from _import_exc
 
-CONFIG_PATH = os.path.expanduser("~/.config/claude-seo/backlinks-api.json")
-CACHE_DIR = os.path.expanduser("~/.cache/claude-seo/commoncrawl")
+CONFIG_PATH = os.path.expanduser("~/.config/seoflow/backlinks-api.json")
+CACHE_DIR = os.path.expanduser("~/.cache/seoflow/commoncrawl")
 
 # Which services need which auth type
 SERVICE_AUTH = {
@@ -61,7 +61,7 @@ def load_config() -> dict:
     """
     Load configuration from config file with environment variable fallbacks.
 
-    Reads ~/.config/claude-seo/backlinks-api.json first. Any missing fields
+    Reads ~/.config/seoflow/backlinks-api.json first. Any missing fields
     are filled from environment variables.
 
     Returns:

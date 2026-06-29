@@ -2,7 +2,7 @@
 
 Google published a dedicated **AI optimization guide** under Search Central
 docs. Its position is the most-cited primary source for how AI Overviews and
-AI Mode interact with Search ranking. Every claude-seo audit that touches GEO
+AI Mode interact with Search ranking. Every seoflow audit that touches GEO
 should treat this doc as the canonical reference and reject community claims
 that contradict it.
 
@@ -105,13 +105,13 @@ site↔agent interaction) and **UCP** (Universal Commerce Protocol — Google +
 Shopify + Etsy + Walmart + Visa/Mastercard). UCP audit criteria:
 `skills/seo-ecommerce/references/ucp-universal-commerce-protocol.md`.
 
-## How claude-seo treats this guide
+## How seoflow treats this guide
 
 1. `seo-geo` audits cite this URL as the authoritative source whenever the
    user asks about AEO/GEO frameworks.
 2. The myth-busting list above gates community-sourced AI-SEO recommendations
    — if a recommendation contradicts Google's stated position, flag it.
-3. Where a third-party claim and Google contradict, claude-seo defers to
+3. Where a third-party claim and Google contradict, seoflow defers to
    Google and notes the contradiction explicitly.
 4. `seo-ecommerce` and `seo-images` enforce the two operational requirements
    above for sites using AI to generate product content.

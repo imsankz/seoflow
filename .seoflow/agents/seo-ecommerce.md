@@ -49,7 +49,7 @@ python3 .seoflow/scripts/dataforseo_costs.py log <endpoint> <actual_cost>
 
 ## Output Format
 
-Match existing claude-seo patterns:
+Match existing seoflow patterns:
 - Tables for comparative data (pricing, seller landscape)
 - Scores as XX/100 (schema, images, content, overall)
 - Priority: Critical > High > Medium > Low

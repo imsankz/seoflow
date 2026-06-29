@@ -168,7 +168,7 @@ Check `robots.txt` for these AI crawlers:
 
 ## llms.txt Standard
 
-Read `references/llmstxt-evidence.md` for the primary-source evidence (Mueller, Illyes, SE Ranking 300k-domain study, OtterlyAI server-log audit) on why `/llms.txt` is not currently a citation lever for major AI search systems. claude-seo reports presence but assigns no citation-ranking weight.
+Read `references/llmstxt-evidence.md` for the primary-source evidence (Mueller, Illyes, SE Ranking 300k-domain study, OtterlyAI server-log audit) on why `/llms.txt` is not currently a citation lever for major AI search systems. seoflow reports presence but assigns no citation-ranking weight.
 
 The emerging **llms.txt** standard provides AI crawlers with structured content guidance.
 

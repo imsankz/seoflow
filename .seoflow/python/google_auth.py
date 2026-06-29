@@ -23,8 +23,8 @@ import sys
 import time
 from typing import Optional
 
-CONFIG_PATH = os.path.expanduser("~/.config/claude-seo/google-api.json")
-TOKEN_PATH = os.path.expanduser("~/.config/claude-seo/oauth-token.json")
+CONFIG_PATH = os.path.expanduser("~/.config/seoflow/google-api.json")
+TOKEN_PATH = os.path.expanduser("~/.config/seoflow/oauth-token.json")
 
 # Service-to-scope mapping
 SCOPES = {
@@ -93,7 +93,7 @@ def load_config() -> dict:
     """
     Load configuration from config file with environment variable fallbacks.
 
-    Reads ~/.config/claude-seo/google-api.json first. Any missing fields
+    Reads ~/.config/seoflow/google-api.json first. Any missing fields
     are filled from environment variables.
 
     Returns:
@@ -758,8 +758,8 @@ Google SEO API Setup Instructions
      Paste email, set Viewer role
 
 6. CREATE CONFIG FILE
-   mkdir -p ~/.config/claude-seo
-   Save to ~/.config/claude-seo/google-api.json:
+   mkdir -p ~/.config/seoflow
+   Save to ~/.config/seoflow/google-api.json:
 
    {
      "service_account_path": "/path/to/service_account.json",
