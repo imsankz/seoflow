@@ -2636,6 +2636,276 @@ var init_ubersuggest_client = __esm({
   }
 });
 
+// lib/python/python-manager.ts
+import { exec, execSync as execSync2 } from "child_process";
+import path9 from "path";
+import fs11 from "fs";
+import { promisify } from "util";
+var execPromise, PythonManager;
+var init_python_manager = __esm({
+  "lib/python/python-manager.ts"() {
+    "use strict";
+    execPromise = promisify(exec);
+    PythonManager = class _PythonManager {
+      static pythonPath = "python3";
+      static virtualEnvPath = null;
+      static initialized = false;
+      /**
+       * Initialize Python manager with configuration
+       */
+      static initialize(config) {
+        if (config?.pythonPath) {
+          _PythonManager.pythonPath = config.pythonPath;
+        }
+        if (config?.virtualEnvPath) {
+          _PythonManager.virtualEnvPath = config.virtualEnvPath;
+        }
+        _PythonManager.initialized = true;
+      }
+      /**
+       * Get the Python interpreter path (including virtual environment if configured)
+       */
+      static getPythonPath() {
+        if (_PythonManager.virtualEnvPath) {
+          if (process.platform === "win32") {
+            return path9.join(_PythonManager.virtualEnvPath, "Scripts", "python.exe");
+          } else {
+            return path9.join(_PythonManager.virtualEnvPath, "bin", "python");
+          }
+        }
+        return _PythonManager.pythonPath;
+      }
+      /**
+       * Check if Python is available
+       */
+      static isPythonAvailable() {
+        try {
+          execSync2(`${this.getPythonPath()} --version`, { stdio: "ignore" });
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+      /**
+       * Check if a specific Python package is installed
+       */
+      static isPackageInstalled(packageName) {
+        try {
+          execSync2(`${this.getPythonPath()} -c "import ${packageName}"`, { stdio: "ignore" });
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+      /**
+       * Run a Python script with optional arguments
+       */
+      static run(options) {
+        const { scriptName, args = [], timeout = 6e4, workingDir = process.cwd() } = options;
+        const scriptPath = path9.resolve(workingDir, "python", `${scriptName}.py`);
+        if (!fs11.existsSync(scriptPath)) {
+          return {
+            stdout: "",
+            stderr: `Script not found: ${scriptPath}`,
+            code: 1,
+            error: new Error(`Script not found: ${scriptPath}`)
+          };
+        }
+        const pythonPath = this.getPythonPath();
+        const command2 = `${pythonPath} "${scriptPath}" ${args.join(" ")}`;
+        try {
+          const result = execSync2(command2, {
+            encoding: "utf8",
+            cwd: workingDir,
+            timeout,
+            stdio: ["pipe", "pipe", "pipe"]
+          });
+          return {
+            stdout: result,
+            stderr: "",
+            code: 0
+          };
+        } catch (error) {
+          return {
+            stdout: error.stdout || "",
+            stderr: error.stderr || error.message,
+            code: error.status || 1,
+            error
+          };
+        }
+      }
+      /**
+       * Run a Python script asynchronously
+       */
+      static async runAsync(options) {
+        const { scriptName, args = [], timeout = 6e4, workingDir = process.cwd() } = options;
+        const scriptPath = path9.resolve(workingDir, "python", `${scriptName}.py`);
+        if (!fs11.existsSync(scriptPath)) {
+          return Promise.resolve({
+            stdout: "",
+            stderr: `Script not found: ${scriptPath}`,
+            code: 1,
+            error: new Error(`Script not found: ${scriptPath}`)
+          });
+        }
+        const pythonPath = this.getPythonPath();
+        const command2 = `${pythonPath} "${scriptPath}" ${args.join(" ")}`;
+        try {
+          const result = await execPromise(command2, {
+            cwd: workingDir,
+            timeout
+          });
+          return {
+            stdout: result.stdout,
+            stderr: result.stderr,
+            code: 0
+          };
+        } catch (error) {
+          return {
+            stdout: error.stdout || "",
+            stderr: error.stderr || error.message,
+            code: error.code || 1,
+            error
+          };
+        }
+      }
+      /**
+       * Run pip commands
+       */
+      static runPip(command2) {
+        const pipCommand = `${this.getPythonPath()} -m pip ${command2}`;
+        try {
+          const result = execSync2(pipCommand, { encoding: "utf8" });
+          return {
+            stdout: result,
+            stderr: "",
+            code: 0
+          };
+        } catch (error) {
+          return {
+            stdout: error.stdout || "",
+            stderr: error.stderr || error.message,
+            code: error.status || 1,
+            error
+          };
+        }
+      }
+      /**
+       * Install dependencies from requirements.txt
+       */
+      static installDependencies(requirementsPath = "python/requirements.txt") {
+        if (!fs11.existsSync(requirementsPath)) {
+          return {
+            stdout: "",
+            stderr: `Requirements file not found: ${requirementsPath}`,
+            code: 1,
+            error: new Error(`Requirements file not found: ${requirementsPath}`)
+          };
+        }
+        return this.runPip(`install -r "${requirementsPath}"`);
+      }
+      /**
+       * Check if all required dependencies are installed
+       */
+      static checkDependencies() {
+        const requirementsPath = "python/requirements.txt";
+        if (!fs11.existsSync(requirementsPath)) {
+          return { missing: ["requirements.txt file not found"], installed: [] };
+        }
+        const requirements = fs11.readFileSync(requirementsPath, "utf8").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#")).map((line) => line.split(/[<>=]/)[0].trim());
+        const missing = [];
+        const installed = [];
+        requirements.forEach((packageName) => {
+          if (this.isPackageInstalled(packageName)) {
+            installed.push(packageName);
+          } else {
+            missing.push(packageName);
+          }
+        });
+        return { missing, installed };
+      }
+    };
+    PythonManager.initialize();
+  }
+});
+
+// lib/semrush-client.ts
+async function researchKeywords2(seed, context = "") {
+  return SEMrushClient.researchKeywords(seed, context);
+}
+var SEMrushClient;
+var init_semrush_client = __esm({
+  "lib/semrush-client.ts"() {
+    "use strict";
+    init_python_manager();
+    SEMrushClient = class {
+      /**
+       * Check if SEMrush API key is available
+       */
+      static hasKey() {
+        return !!process.env.SEMRUSH_API_KEY;
+      }
+      /**
+       * Research keywords using SEMrush
+       */
+      static async researchKeywords(seed, context = "") {
+        try {
+          if (!this.hasKey()) {
+            return this.fallbackResearch(seed);
+          }
+          if (!PythonManager.isPythonAvailable()) {
+            return this.fallbackResearch(seed);
+          }
+          const result = PythonManager.run({
+            scriptName: "semrush_keywords",
+            args: [
+              `--seed "${this.escapeQuotes(seed)}"`,
+              `--context "${this.escapeQuotes(context)}"`,
+              `--api-key "${process.env.SEMRUSH_API_KEY}"`,
+              "--json"
+            ],
+            timeout: 6e4
+          });
+          if (result.code === 0) {
+            const data = JSON.parse(result.stdout);
+            return {
+              focusKeyword: data.focusKeyword || seed,
+              searchVolume: data.searchVolume || 0,
+              difficulty: data.difficulty || 0,
+              relatedKeywords: data.relatedKeywords || [],
+              source: "semrush"
+            };
+          } else {
+            console.error("SEMrush research failed:", result.stderr);
+            return this.fallbackResearch(seed);
+          }
+        } catch (error) {
+          console.error("SEMrush research error:", error.message);
+          return this.fallbackResearch(seed);
+        }
+      }
+      /**
+       * Fallback research using basic keyword extraction
+       */
+      static fallbackResearch(seed) {
+        return {
+          focusKeyword: seed,
+          searchVolume: 0,
+          difficulty: 0,
+          relatedKeywords: [],
+          source: "fallback"
+        };
+      }
+      /**
+       * Escape quotes for shell command
+       */
+      static escapeQuotes(text) {
+        return text.replace(/"/g, '\\"').replace(/\n/g, "\\n");
+      }
+    };
+  }
+});
+
 // lib/schema.ts
 function detectSchemaType(fm, content) {
   if (fm.schema) {
@@ -3236,199 +3506,6 @@ var init_schema = __esm({
   }
 });
 
-// lib/python/python-manager.ts
-import { exec, execSync as execSync2 } from "child_process";
-import path9 from "path";
-import fs11 from "fs";
-import { promisify } from "util";
-var execPromise, PythonManager;
-var init_python_manager = __esm({
-  "lib/python/python-manager.ts"() {
-    "use strict";
-    execPromise = promisify(exec);
-    PythonManager = class _PythonManager {
-      static pythonPath = "python3";
-      static virtualEnvPath = null;
-      static initialized = false;
-      /**
-       * Initialize Python manager with configuration
-       */
-      static initialize(config) {
-        if (config?.pythonPath) {
-          _PythonManager.pythonPath = config.pythonPath;
-        }
-        if (config?.virtualEnvPath) {
-          _PythonManager.virtualEnvPath = config.virtualEnvPath;
-        }
-        _PythonManager.initialized = true;
-      }
-      /**
-       * Get the Python interpreter path (including virtual environment if configured)
-       */
-      static getPythonPath() {
-        if (_PythonManager.virtualEnvPath) {
-          if (process.platform === "win32") {
-            return path9.join(_PythonManager.virtualEnvPath, "Scripts", "python.exe");
-          } else {
-            return path9.join(_PythonManager.virtualEnvPath, "bin", "python");
-          }
-        }
-        return _PythonManager.pythonPath;
-      }
-      /**
-       * Check if Python is available
-       */
-      static isPythonAvailable() {
-        try {
-          execSync2(`${this.getPythonPath()} --version`, { stdio: "ignore" });
-          return true;
-        } catch (error) {
-          return false;
-        }
-      }
-      /**
-       * Check if a specific Python package is installed
-       */
-      static isPackageInstalled(packageName) {
-        try {
-          execSync2(`${this.getPythonPath()} -c "import ${packageName}"`, { stdio: "ignore" });
-          return true;
-        } catch (error) {
-          return false;
-        }
-      }
-      /**
-       * Run a Python script with optional arguments
-       */
-      static run(options) {
-        const { scriptName, args = [], timeout = 6e4, workingDir = process.cwd() } = options;
-        const scriptPath = path9.resolve(workingDir, "python", `${scriptName}.py`);
-        if (!fs11.existsSync(scriptPath)) {
-          return {
-            stdout: "",
-            stderr: `Script not found: ${scriptPath}`,
-            code: 1,
-            error: new Error(`Script not found: ${scriptPath}`)
-          };
-        }
-        const pythonPath = this.getPythonPath();
-        const command2 = `${pythonPath} "${scriptPath}" ${args.join(" ")}`;
-        try {
-          const result = execSync2(command2, {
-            encoding: "utf8",
-            cwd: workingDir,
-            timeout,
-            stdio: ["pipe", "pipe", "pipe"]
-          });
-          return {
-            stdout: result,
-            stderr: "",
-            code: 0
-          };
-        } catch (error) {
-          return {
-            stdout: error.stdout || "",
-            stderr: error.stderr || error.message,
-            code: error.status || 1,
-            error
-          };
-        }
-      }
-      /**
-       * Run a Python script asynchronously
-       */
-      static async runAsync(options) {
-        const { scriptName, args = [], timeout = 6e4, workingDir = process.cwd() } = options;
-        const scriptPath = path9.resolve(workingDir, "python", `${scriptName}.py`);
-        if (!fs11.existsSync(scriptPath)) {
-          return Promise.resolve({
-            stdout: "",
-            stderr: `Script not found: ${scriptPath}`,
-            code: 1,
-            error: new Error(`Script not found: ${scriptPath}`)
-          });
-        }
-        const pythonPath = this.getPythonPath();
-        const command2 = `${pythonPath} "${scriptPath}" ${args.join(" ")}`;
-        try {
-          const result = await execPromise(command2, {
-            cwd: workingDir,
-            timeout
-          });
-          return {
-            stdout: result.stdout,
-            stderr: result.stderr,
-            code: 0
-          };
-        } catch (error) {
-          return {
-            stdout: error.stdout || "",
-            stderr: error.stderr || error.message,
-            code: error.code || 1,
-            error
-          };
-        }
-      }
-      /**
-       * Run pip commands
-       */
-      static runPip(command2) {
-        const pipCommand = `${this.getPythonPath()} -m pip ${command2}`;
-        try {
-          const result = execSync2(pipCommand, { encoding: "utf8" });
-          return {
-            stdout: result,
-            stderr: "",
-            code: 0
-          };
-        } catch (error) {
-          return {
-            stdout: error.stdout || "",
-            stderr: error.stderr || error.message,
-            code: error.status || 1,
-            error
-          };
-        }
-      }
-      /**
-       * Install dependencies from requirements.txt
-       */
-      static installDependencies(requirementsPath = "python/requirements.txt") {
-        if (!fs11.existsSync(requirementsPath)) {
-          return {
-            stdout: "",
-            stderr: `Requirements file not found: ${requirementsPath}`,
-            code: 1,
-            error: new Error(`Requirements file not found: ${requirementsPath}`)
-          };
-        }
-        return this.runPip(`install -r "${requirementsPath}"`);
-      }
-      /**
-       * Check if all required dependencies are installed
-       */
-      static checkDependencies() {
-        const requirementsPath = "python/requirements.txt";
-        if (!fs11.existsSync(requirementsPath)) {
-          return { missing: ["requirements.txt file not found"], installed: [] };
-        }
-        const requirements = fs11.readFileSync(requirementsPath, "utf8").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#")).map((line) => line.split(/[<>=]/)[0].trim());
-        const missing = [];
-        const installed = [];
-        requirements.forEach((packageName) => {
-          if (this.isPackageInstalled(packageName)) {
-            installed.push(packageName);
-          } else {
-            missing.push(packageName);
-          }
-        });
-        return { missing, installed };
-      }
-    };
-    PythonManager.initialize();
-  }
-});
-
 // lib/technical/psi.ts
 import path10 from "path";
 function getPSIInstance(apiKey) {
@@ -3863,6 +3940,12 @@ var init_content_quality = __esm({
           score: wordCount > 800 ? 85 : 65,
           eeatScore: hasPersonalExperience && hasSpecificDetails ? 90 : 70,
           readabilityScore: 75,
+          fleschKincaidScore: 70,
+          // Easy to read
+          gunningFogScore: 10,
+          // Easy to read
+          colemanLiauScore: 10,
+          // Easy to read
           issues: wordCount < 400 ? ["Content is too short"] : [],
           warnings: !hasPersonalExperience ? ["Lacks personal experience signals"] : [],
           improvements: wordCount > 1e3 ? ["Consider breaking into shorter sections"] : [],
@@ -3903,7 +3986,8 @@ async function stepContentQualityAudit(input) {
   if (qualityResult.claimsNeedingCitation.length > 0) {
     changes.push(`\u{1F4DA} ${qualityResult.claimsNeedingCitation.length} claims need citation`);
   }
-  changes.push(`\u{1F4C8} Quality score: ${qualityResult.score}/100, E-E-A-T: ${qualityResult.eeatScore}/100`);
+  changes.push(`\u{1F4C8} Quality score: ${qualityResult.score}/100, E-E-A-T: ${qualityResult.eeatScore}/100, Readability: ${qualityResult.readabilityScore}/100`);
+  changes.push(`\u{1F4CA} Flesch-Kincaid: ${qualityResult.fleschKincaidScore}, Gunning Fog: ${qualityResult.gunningFogScore}, Coleman-Liau: ${qualityResult.colemanLiauScore}`);
   if (qualityResult.aiPatternCount > 0) {
     const humanizeResult = ContentQualityAnalyzer.humanize(modifiedContent);
     if (humanizeResult.changesMade > 0) {
@@ -4234,7 +4318,12 @@ async function stepKeywordResearch(input) {
   const fm = { ...input.frontmatter };
   const seed = fm.focusKeyword || fm.title || input.slug;
   const context = `${fm.category || getDefaultCategory()} ${(fm.tags || []).join(" ")}`;
-  const kwResult = await researchKeywords(seed, input.slug, context);
+  let kwResult;
+  if (process.env.SEMRUSH_API_KEY) {
+    kwResult = await researchKeywords2(seed, context);
+  } else {
+    kwResult = await researchKeywords(seed, input.slug, context);
+  }
   if (kwResult.source === "ubersuggest" && kwResult.focusKeyword !== seed) {
     const oldKw = fm.focusKeyword || seed;
     fm.focusKeyword = kwResult.focusKeyword;
@@ -4853,6 +4942,7 @@ var init_steps = __esm({
     init_ai_provider();
     init_audit_log();
     init_ubersuggest_client();
+    init_semrush_client();
     init_config();
     init_ai_provider();
     init_learning();

@@ -6,11 +6,14 @@
 
 import type { StepInput, StepOutput } from '../lib/types';
 import { getPSIInstance, validateUrl, type PSIResult, type CrUXResult, type LCPBreakdown } from '../lib/technical/psi';
+import { checkBrokenLinks, checkRedirectChains } from '../lib/technical/broken-links';
 
 export interface TechnicalAuditResult {
   psi: PSIResult;
   crux?: CrUXResult;
   lcpBreakdown?: LCPBreakdown;
+  brokenLinks?: any[];
+  redirectChains?: any[];
   issues: string[];
   warnings: string[];
   quickWins: string[];
@@ -35,13 +38,15 @@ export async function stepTechnicalAudit(input: StepInput): Promise<StepOutput &
     console.log(`     📊 Running technical SEO audit for ${input.slug}`);
 
     // Run PSI and CrUX checks
-    const [psiResult, cruxResult, lcpBreakdown] = await Promise.all([
+    const [psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains] = await Promise.all([
       psi.run(input.slug),
       psi.getCrUX(input.slug),
       psi.getLCPBreakdown(input.slug),
+      checkBrokenLinks(input.slug),
+      checkRedirectChains(input.slug),
     ]);
 
-    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown);
+    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains);
 
     // Log findings
     if (auditResult.issues.length > 0) {
@@ -83,11 +88,43 @@ export async function stepTechnicalAudit(input: StepInput): Promise<StepOutput &
 function analyzeTechnicalData(
   psi: PSIResult,
   crux?: CrUXResult,
-  lcpBreakdown?: LCPBreakdown
+  lcpBreakdown?: LCPBreakdown,
+  brokenLinks?: any[],
+  redirectChains?: any[]
 ): TechnicalAuditResult {
   const issues: string[] = [];
   const warnings: string[] = [];
   const quickWins: string[] = [];
+
+  // Broken links
+  if (brokenLinks && brokenLinks.length > 0) {
+    const broken = brokenLinks.filter((link: any) => link.isBroken);
+    if (broken.length > 0) {
+      issues.push(`Found ${broken.length} broken links`);
+      broken.forEach((link: any) => {
+        issues.push(`  • ${link.url} (${link.status} ${link.statusText})`);
+      });
+    }
+  }
+
+  // Redirect chains
+  if (redirectChains && redirectChains.length > 0) {
+    const longChains = redirectChains.filter((chain: any) => chain.chain.length > 2);
+    if (longChains.length > 0) {
+      warnings.push(`Found ${longChains.length} long redirect chains`);
+      longChains.forEach((chain: any) => {
+        warnings.push(`  • ${chain.url} (${chain.chain.length} redirects)`);
+      });
+    }
+
+    const loops = redirectChains.filter((chain: any) => chain.isRedirectLoop);
+    if (loops.length > 0) {
+      issues.push(`Found ${loops.length} redirect loops`);
+      loops.forEach((loop: any) => {
+        issues.push(`  • ${loop.url} (redirect loop)`);
+      });
+    }
+  }
 
   // Core Web Vitals thresholds
   const CWV_THRESHOLDS = {
