@@ -54,5 +54,8 @@
   "devDependencies": {
     "esbuild": "^0.24.0",
     "tsx": "^4.19.0"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2"
   }
 }
