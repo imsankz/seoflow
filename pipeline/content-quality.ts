@@ -52,7 +52,8 @@ export async function stepContentQualityAudit(input: StepInput): Promise<StepOut
     changes.push(`📚 ${qualityResult.claimsNeedingCitation.length} claims need citation`);
   }
 
-  changes.push(`📈 Quality score: ${qualityResult.score}/100, E-E-A-T: ${qualityResult.eeatScore}/100`);
+  changes.push(`📈 Quality score: ${qualityResult.score}/100, E-E-A-T: ${qualityResult.eeatScore}/100, Readability: ${qualityResult.readabilityScore}/100`);
+  changes.push(`📊 Flesch-Kincaid: ${qualityResult.fleschKincaidScore}, Gunning Fog: ${qualityResult.gunningFogScore}, Coleman-Liau: ${qualityResult.colemanLiauScore}`);
 
   // Humanize content if needed
   if (qualityResult.aiPatternCount > 0) {

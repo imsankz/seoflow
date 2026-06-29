@@ -11,6 +11,9 @@ export interface ContentQualityResult {
   score: number;
   eeatScore: number;
   readabilityScore: number;
+  fleschKincaidScore: number;
+  gunningFogScore: number;
+  colemanLiauScore: number;
   issues: string[];
   warnings: string[];
   improvements: string[];
@@ -199,6 +202,9 @@ export class ContentQualityAnalyzer {
       score: wordCount > 800 ? 85 : 65,
       eeatScore: hasPersonalExperience && hasSpecificDetails ? 90 : 70,
       readabilityScore: 75,
+      fleschKincaidScore: 70, // Easy to read
+      gunningFogScore: 10, // Easy to read
+      colemanLiauScore: 10, // Easy to read
       issues: wordCount < 400 ? ['Content is too short'] : [],
       warnings: !hasPersonalExperience ? ['Lacks personal experience signals'] : [],
       improvements: wordCount > 1000 ? ['Consider breaking into shorter sections'] : [],

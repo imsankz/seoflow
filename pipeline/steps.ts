@@ -11,7 +11,8 @@ import { fetchBestImage } from '../lib/pexels-client';
 import { fetchNeuronData, hasNeuronKey } from '../lib/neuronwriter';
 import { aiChatWithRetry } from '../lib/ai-provider';
 import { logEntry, isAlreadyDone } from '../lib/audit-log';
-import { researchKeywords } from '../lib/ubersuggest-client';
+import { researchKeywords as ubersuggestResearch } from '../lib/ubersuggest-client';
+import { researchKeywords as semrushResearch } from '../lib/semrush-client';
 import { getToolTriggers, getBookingTriggers, getAiContext, getWritingSample, getImageSearchFallback, getDefaultCategory, getContentDomain, getSiteUrl, loadConfig } from '../lib/config';
 import { resetAiCallCounter, getAiCallCount } from '../lib/ai-provider';
 import { checkGscDelta, recordStep, logRun } from '../lib/learning';
@@ -42,7 +43,12 @@ export async function stepKeywordResearch(input: StepInput): Promise<StepOutput>
   const seed = fm.focusKeyword || fm.title || input.slug;
   const context = `${fm.category || getDefaultCategory()} ${(fm.tags || []).join(' ')}`;
 
-  const kwResult = await researchKeywords(seed, input.slug, context);
+  let kwResult;
+  if (process.env.SEMRUSH_API_KEY) {
+    kwResult = await semrushResearch(seed, context);
+  } else {
+    kwResult = await ubersuggestResearch(seed, input.slug, context);
+  }
   if (kwResult.source === 'ubersuggest' && kwResult.focusKeyword !== seed) {
     const oldKw = fm.focusKeyword || seed;
     fm.focusKeyword = kwResult.focusKeyword;
