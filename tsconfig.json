@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "declaration": false,
+    "outDir": "dist",
+    "rootDir": ".",
+    "sourceMap": true,
+    "resolveJsonModule": true
+  },
+  "include": ["lib/**/*.ts", "pipeline/**/*.ts", "bin/**/*.ts", "run.ts"]
+}
