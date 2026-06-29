@@ -2,7 +2,7 @@
  * mdx-parser.test.ts — unit tests for MDX parse/build roundtrip,
  * link injection detection, word/image/link counting.
  *
- * Run: npx tsx --test .seoflow/tests/mdx-parser.test.ts
+ * Run: npx tsx --test tests/mdx-parser.test.ts
  */
 
 import assert from 'node:assert/strict';
@@ -15,7 +15,7 @@ import {
   countInternalLinks,
   getH2Sections,
   sectionNeedsImage,
-} from '../.seoflow/lib/mdx-parser';
+} from '../lib/mdx-parser';
 
 // ─── parse / build roundtrip ──────────────────────────────────────────────────
 

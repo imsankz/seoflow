@@ -4,7 +4,7 @@
  * Verifies that stepFixFrontmatter and stepInjectLinks do not corrupt content,
  * and that parseMdx/buildFrontmatterBlock roundtrip is lossless.
  *
- * Run: npx tsx --test .seoflow/tests/integration.test.ts
+ * Run: npx tsx --test tests/integration.test.ts
  */
 
 import assert from 'node:assert/strict';
@@ -13,8 +13,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { configure, resetConfig } from '../.seoflow/lib/config';
-import type { SeoFlowConfig } from '../.seoflow/lib/config';
+import { configure, resetConfig } from '../lib/config';
+import type { SeoFlowConfig } from '../lib/config';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE = path.join(__dirname, 'fixtures', 'rome-things-to-do.mdx');
@@ -43,7 +43,7 @@ function freshConfig(postsDir: string): void {
 // ─── Frontmatter roundtrip ────────────────────────────────────────────────────
 
 test('parseMdx + buildFrontmatterBlock: fixture roundtrip is lossless', async () => {
-  const { parseMdx, buildFrontmatterBlock } = await import('../.seoflow/lib/mdx-parser');
+  const { parseMdx, buildFrontmatterBlock } = await import('../lib/mdx-parser');
 
   const raw = fs.readFileSync(FIXTURE, 'utf8');
   const { frontmatter, content } = parseMdx(raw);
@@ -62,8 +62,8 @@ test('stepFixFrontmatter: adds schema without corrupting content', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'seoflow-int-'));
   freshConfig(tmpDir);
 
-  const { parseMdx } = await import('../.seoflow/lib/mdx-parser');
-  const { stepFixFrontmatter } = await import('../.seoflow/pipeline/steps');
+  const { parseMdx } = await import('../lib/mdx-parser');
+  const { stepFixFrontmatter } = await import('../pipeline/steps');
 
   const raw = fs.readFileSync(FIXTURE, 'utf8');
   const { frontmatter, content } = parseMdx(raw);
@@ -84,8 +84,8 @@ test('stepInjectLinks: inserts link and does not double-link', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'seoflow-int-'));
   freshConfig(tmpDir);
 
-  const { parseMdx } = await import('../.seoflow/lib/mdx-parser');
-  const { stepInjectLinks } = await import('../.seoflow/pipeline/steps');
+  const { parseMdx } = await import('../lib/mdx-parser');
+  const { stepInjectLinks } = await import('../pipeline/steps');
 
   const raw = fs.readFileSync(FIXTURE, 'utf8');
   const { frontmatter, content } = parseMdx(raw);
@@ -107,8 +107,8 @@ test('write-reparse: modified MDX can be re-parsed without error', async () => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'seoflow-int-'));
   freshConfig(tmpDir);
 
-  const { parseMdx, buildFrontmatterBlock } = await import('../.seoflow/lib/mdx-parser');
-  const { stepFixFrontmatter } = await import('../.seoflow/pipeline/steps');
+  const { parseMdx, buildFrontmatterBlock } = await import('../lib/mdx-parser');
+  const { stepFixFrontmatter } = await import('../pipeline/steps');
 
   const raw = fs.readFileSync(FIXTURE, 'utf8');
   const { frontmatter, content } = parseMdx(raw);
