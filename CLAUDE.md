@@ -97,14 +97,18 @@ npx seoflow init
 
 ## Pipeline Steps
 
-1. **Keywords**: Ubersuggest MCP (cached) → focusKeyword + related terms
+1. **Keywords**: SEMrush (if API key) or Ubersuggest MCP → focusKeyword + related terms
 2. **Meta**: Schema, description length, focusKeyword, lastModified
 3. **Links**: Inject internal links from your configured triggers
 4. **Images**: Pexels/Unsplash fetch per H2 section (1 per section, max 2)
 5. **Neuron**: NeuronWriter NLP: target word count, missing terms, People Also Ask
 6. **Content**: Gemini 2.5 Flash: FAQ, thin section expansion, NLP term weaving
-7. **Review**: SEO score (1-10), quick wins, auto-fix title/meta
-8. **FactCheck**: Price/claim verification via Google Search grounding
+7. **Review**: Claude-style SEO review: score (1-10), quick wins, auto-fix title/meta
+8. **Schema**: Validate and generate Schema.org structured data
+9. **Quality**: Content quality audit (E-E-A-T signals, readability)
+10. **Technical**: Technical SEO checks: broken links, redirect chains
+11. **FactCheck**: Price/claim verification via Google Search grounding
+12. **Report**: Export audit report (PDF format)
 
 ## Extensions
 
