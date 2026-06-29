@@ -541,35 +541,52 @@ export async function stepFactCheck(input: StepInput): Promise<StepOutput> {
   const pricePattern = /[€$£]\s*\d+(?:[.,]\d+)?(?:\s*(?:€|euro|EUR|USD|GBP|dollars?|pounds?))?/g;
   const prices = [...new Set(content.match(pricePattern) || [])];
 
-  if (prices.length === 0) {
-    return { content, frontmatter, changes };
-  }
+  // Extract opening hours patterns from content
+  const hoursPattern = /(?:open|closed|hours?)\s*(?:[:=]?\s*)?(?:\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?\s*(?:-|to|–)\s*\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?|24\s*hrs?|24\s*hours?)/gi;
+  const openingHours = [...new Set(content.match(hoursPattern) || [])];
 
-  // Sample up to 5 prices to verify
-  const pricesToCheck = prices.slice(0, 5);
   const postTitle = frontmatter.title || slug;
   const category = frontmatter.category || getDefaultCategory();
   const destination = (frontmatter.tags || [])[0] || '';
   const domain = getContentDomain();
 
-  const prompt = `You are verifying price claims in a ${domain} post.
+  let prompt = `You are verifying claims in a ${domain} post.
 
 POST TITLE: "${postTitle}"
 CATEGORY: ${category}
 DESTINATION: ${destination}
 
-PRICES FOUND IN THE POST:
-${pricesToCheck.map((p, i) => `${i + 1}. ${p}`).join('\n')}
+`;
 
-For each price, tell me:
-1. Is this price still realistic/current? (yes/no/uncertain)
-2. What's the approximate current price if it has changed?
+  const hasPrices = prices.length > 0;
+  const hasHours = openingHours.length > 0;
+
+  if (hasPrices) {
+    prompt += `PRICES FOUND IN THE POST:
+${prices.slice(0, 5).map((p, i) => `${i + 1}. ${p}`).join('\n')}
+
+`;
+  }
+
+  if (hasHours) {
+    prompt += `OPENING HOURS FOUND IN THE POST:
+${openingHours.map((h, i) => `${i + 1}. ${h}`).join('\n')}
+
+`;
+  }
+
+  prompt += `For each claim, tell me:
+1. Is this claim still realistic/current? (yes/no/uncertain)
+2. What's the current information if it has changed?
 3. What's your confidence level? (high/medium/low)
 
 OUTPUT: Raw JSON object only, no markdown.
-{"prices":[{"claim":"€30","still_accurate":"yes","current_price":"€30","confidence":"high","note":"Still accurate"}]}`;
+{"prices":[{"claim":"€30","still_accurate":"yes","current_price":"€30","confidence":"high","note":"Still accurate"}],"openingHours":[{"claim":"9am-5pm","still_accurate":"yes","current_hours":"9am-6pm","confidence":"medium","note":"Hours extended"}]}
+`;
 
-  console.log(`     🔍 Fact check: ${pricesToCheck.length} prices found`);
+  const itemsToCheck = prices.length + openingHours.length;
+  console.log(`     🔍 Fact check: ${itemsToCheck} items found`);
+
   const response = await aiChatWithRetry(prompt, 'fact-check');
   if (!response) {
     console.log(`     ⚠️  Fact check failed after 3 attempts`);
@@ -583,15 +600,33 @@ OUTPUT: Raw JSON object only, no markdown.
     const end = raw.lastIndexOf('}');
     if (start !== -1 && end !== -1) {
       const report = JSON.parse(raw.slice(start, end + 1));
-      const priceReports = report.prices || [];
-      const flagged = priceReports.filter((p: any) => p.still_accurate === 'no');
 
-      if (flagged.length > 0) {
-        for (const p of flagged) {
-          changes.push(`🔴 Price may be outdated: claimed "${p.claim}", current ~"${p.current_price}" (confidence: ${p.confidence})`);
+      // Process price reports
+      if (report.prices && report.prices.length > 0) {
+        const priceReports = report.prices;
+        const flaggedPrices = priceReports.filter((p: any) => p.still_accurate === 'no');
+
+        if (flaggedPrices.length > 0) {
+          for (const p of flaggedPrices) {
+            changes.push(`🔴 Price may be outdated: claimed "${p.claim}", current ~"${p.current_price}" (confidence: ${p.confidence})`);
+          }
+        } else {
+          changes.push(`✅ All ${priceReports.length} prices verified (via Google Search grounding)`);
         }
-      } else if (priceReports.length > 0) {
-        changes.push(`✅ All ${priceReports.length} prices verified (via Google Search grounding)`);
+      }
+
+      // Process opening hours reports
+      if (report.openingHours && report.openingHours.length > 0) {
+        const hoursReports = report.openingHours;
+        const flaggedHours = hoursReports.filter((h: any) => h.still_accurate === 'no');
+
+        if (flaggedHours.length > 0) {
+          for (const h of flaggedHours) {
+            changes.push(`🔴 Opening hours may be outdated: claimed "${h.claim}", current ~"${h.current_hours}" (confidence: ${h.confidence})`);
+          }
+        } else {
+          changes.push(`✅ All ${hoursReports.length} opening hours verified (via Google Search grounding)`);
+        }
       }
     }
   } catch {
