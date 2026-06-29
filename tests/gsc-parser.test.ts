@@ -10,8 +10,8 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { configure, resetConfig } from '../lib/config';
-import type { SeoFlowConfig } from '../lib/config';
+import { configure, resetConfig } from '../.seoflow/lib/config';
+import type { SeoFlowConfig } from '../.seoflow/lib/config';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -57,7 +57,7 @@ test('parseGscPagesFromCsv: English column names', async () => {
   resetConfig();
   configure(makeTestConfig(file, file));
 
-  const { parseGscPagesFromCsv } = await import('../lib/gsc-parser');
+  const { parseGscPagesFromCsv } = await import('../.seoflow/lib/gsc-parser');
   const result = parseGscPagesFromCsv();
 
   assert.ok(result['my-post'], 'should find my-post');
@@ -81,7 +81,7 @@ test('parseGscPagesFromCsv: German column names (Klicks, Impressionen)', async (
   resetConfig();
   configure(makeTestConfig(file, file));
 
-  const { parseGscPagesFromCsv } = await import('../lib/gsc-parser');
+  const { parseGscPagesFromCsv } = await import('../.seoflow/lib/gsc-parser');
   const result = parseGscPagesFromCsv();
 
   assert.ok(result['berlin-guide'], 'should find berlin-guide');
@@ -101,7 +101,7 @@ test('parseGscPagesFromCsv: normalises fractional CTR (0.1164 → 11.64)', async
   resetConfig();
   configure(makeTestConfig(file, file));
 
-  const { parseGscPagesFromCsv } = await import('../lib/gsc-parser');
+  const { parseGscPagesFromCsv } = await import('../.seoflow/lib/gsc-parser');
   const result = parseGscPagesFromCsv();
 
   assert.ok(result['test-post'], 'should find test-post');
@@ -114,7 +114,7 @@ test('parseGscPagesFromCsv: returns empty object when file missing', async () =>
   resetConfig();
   configure(makeTestConfig('/tmp/nonexistent-pages.csv', '/tmp/nonexistent-queries.csv'));
 
-  const { parseGscPagesFromCsv } = await import('../lib/gsc-parser');
+  const { parseGscPagesFromCsv } = await import('../.seoflow/lib/gsc-parser');
   const result = parseGscPagesFromCsv();
   assert.deepEqual(result, {});
 });
@@ -133,7 +133,7 @@ test('parseGscPagesFromCsv: respects custom blogPrefix', async () => {
   cfg.blogPrefix = '/posts/';
   configure(cfg);
 
-  const { parseGscPagesFromCsv } = await import('../lib/gsc-parser');
+  const { parseGscPagesFromCsv } = await import('../.seoflow/lib/gsc-parser');
   const result = parseGscPagesFromCsv();
   assert.ok(result['my-article'], 'should strip /posts/ prefix');
 });

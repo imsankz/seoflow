@@ -15,7 +15,7 @@ import {
   countInternalLinks,
   getH2Sections,
   sectionNeedsImage,
-} from '../lib/mdx-parser';
+} from '../.seoflow/lib/mdx-parser';
 
 // ─── parse / build roundtrip ──────────────────────────────────────────────────
 

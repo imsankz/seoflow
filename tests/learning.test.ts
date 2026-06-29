@@ -10,8 +10,8 @@ import { test, beforeEach } from 'node:test';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { configure, resetConfig } from '../lib/config';
-import type { SeoFlowConfig } from '../lib/config';
+import { configure, resetConfig } from '../.seoflow/lib/config';
+import type { SeoFlowConfig } from '../.seoflow/lib/config';
 
 // ─── Isolated test data directory ─────────────────────────────────────────────
 
@@ -39,7 +39,7 @@ function freshConfig(): void {
 
 test('recordStep: accumulates run counts', async () => {
   freshConfig();
-  const { recordStep, getLearningSummary } = await import('../lib/learning');
+  const { recordStep, getLearningSummary } = await import('../.seoflow/lib/learning');
 
   recordStep('test-post-1', 'meta', 'travel', 2, { impressions: 1000, clicks: 50, ctr: 5, position: 10 });
   recordStep('test-post-2', 'meta', 'travel', 1, { impressions: 500, clicks: 20, ctr: 4, position: 12 });
@@ -55,7 +55,7 @@ test('recordStep: accumulates run counts', async () => {
 
 test('checkGscDelta: returns null when no baseline exists', async () => {
   freshConfig();
-  const { checkGscDelta } = await import('../lib/learning');
+  const { checkGscDelta } = await import('../.seoflow/lib/learning');
 
   const delta = checkGscDelta('new-post', 'meta', 'travel', { impressions: 1000, clicks: 50, ctr: 5, position: 10 });
   assert.equal(delta, null);
@@ -63,7 +63,7 @@ test('checkGscDelta: returns null when no baseline exists', async () => {
 
 test('checkGscDelta: calculates position improvement after second run', async () => {
   freshConfig();
-  const { recordStep, checkGscDelta } = await import('../lib/learning');
+  const { recordStep, checkGscDelta } = await import('../.seoflow/lib/learning');
 
   // First run — establishes baseline
   recordStep('delta-post', 'content', 'food', 2, { impressions: 1000, clicks: 30, ctr: 3, position: 15 });
@@ -80,7 +80,7 @@ test('checkGscDelta: calculates position improvement after second run', async ()
 
 test('predictPriority: scores striking distance pages higher', async () => {
   freshConfig();
-  const { predictPriority } = await import('../lib/learning');
+  const { predictPriority } = await import('../.seoflow/lib/learning');
 
   const highImpressionsStrikingDist = predictPriority('great-post', {
     impressions: 3000,
@@ -104,7 +104,7 @@ test('predictPriority: scores striking distance pages higher', async () => {
 
 test('predictPriority: low CTR with high impressions gets bonus', async () => {
   freshConfig();
-  const { predictPriority } = await import('../lib/learning');
+  const { predictPriority } = await import('../.seoflow/lib/learning');
 
   const lowCtr = predictPriority('low-ctr', { impressions: 2000, clicks: 30, ctr: 1.5, position: 12 });
   const okCtr = predictPriority('ok-ctr', { impressions: 2000, clicks: 120, ctr: 6, position: 12 });
@@ -116,7 +116,7 @@ test('predictPriority: low CTR with high impressions gets bonus', async () => {
 
 test('getLearningSummary: returns empty array when no learning data', async () => {
   freshConfig();
-  const { getLearningSummary } = await import('../lib/learning');
+  const { getLearningSummary } = await import('../.seoflow/lib/learning');
   const summary = getLearningSummary();
   assert.ok(Array.isArray(summary));
   // With no data or <3 runs, should return empty or very short list
