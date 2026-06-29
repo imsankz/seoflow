@@ -545,6 +545,10 @@ export async function stepFactCheck(input: StepInput): Promise<StepOutput> {
   const hoursPattern = /(?:open|closed|hours?)\s*(?:[:=]?\s*)?(?:\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?\s*(?:-|to|–)\s*\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?|24\s*hrs?|24\s*hours?)/gi;
   const openingHours = [...new Set(content.match(hoursPattern) || [])];
 
+  // Extract address patterns from content
+  const addressPattern = /\d{1,4}\s*[a-zA-Z\s]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|square|sq|terrace|ter|circle|cir|way)\b/i;
+  const addresses = [...new Set(content.match(addressPattern) || [])];
+
   const postTitle = frontmatter.title || slug;
   const category = frontmatter.category || getDefaultCategory();
   const destination = (frontmatter.tags || [])[0] || '';
@@ -560,6 +564,7 @@ DESTINATION: ${destination}
 
   const hasPrices = prices.length > 0;
   const hasHours = openingHours.length > 0;
+  const hasAddresses = addresses.length > 0;
 
   if (hasPrices) {
     prompt += `PRICES FOUND IN THE POST:
@@ -575,16 +580,23 @@ ${openingHours.map((h, i) => `${i + 1}. ${h}`).join('\n')}
 `;
   }
 
+  if (hasAddresses) {
+    prompt += `ADDRESSES FOUND IN THE POST:
+${addresses.map((a, i) => `${i + 1}. ${a}`).join('\n')}
+
+`;
+  }
+
   prompt += `For each claim, tell me:
 1. Is this claim still realistic/current? (yes/no/uncertain)
 2. What's the current information if it has changed?
 3. What's your confidence level? (high/medium/low)
 
 OUTPUT: Raw JSON object only, no markdown.
-{"prices":[{"claim":"€30","still_accurate":"yes","current_price":"€30","confidence":"high","note":"Still accurate"}],"openingHours":[{"claim":"9am-5pm","still_accurate":"yes","current_hours":"9am-6pm","confidence":"medium","note":"Hours extended"}]}
+{"prices":[{"claim":"€30","still_accurate":"yes","current_price":"€30","confidence":"high","note":"Still accurate"}],"openingHours":[{"claim":"9am-5pm","still_accurate":"yes","current_hours":"9am-6pm","confidence":"medium","note":"Hours extended"}],"addresses":[{"claim":"123 Main Street","still_accurate":"yes","current_address":"123 Main Street","confidence":"high","note":"Address verified"}]}
 `;
 
-  const itemsToCheck = prices.length + openingHours.length;
+  const itemsToCheck = prices.length + openingHours.length + addresses.length;
   console.log(`     🔍 Fact check: ${itemsToCheck} items found`);
 
   const response = await aiChatWithRetry(prompt, 'fact-check');
@@ -626,6 +638,20 @@ OUTPUT: Raw JSON object only, no markdown.
           }
         } else {
           changes.push(`✅ All ${hoursReports.length} opening hours verified (via Google Search grounding)`);
+        }
+      }
+
+      // Process address reports
+      if (report.addresses && report.addresses.length > 0) {
+        const addressReports = report.addresses;
+        const flaggedAddresses = addressReports.filter((a: any) => a.still_accurate === 'no');
+
+        if (flaggedAddresses.length > 0) {
+          for (const a of flaggedAddresses) {
+            changes.push(`🔴 Address may be outdated: claimed "${a.claim}", current ~"${a.current_address}" (confidence: ${a.confidence})`);
+          }
+        } else {
+          changes.push(`✅ All ${addressReports.length} addresses verified (via Google Search grounding)`);
         }
       }
     }
