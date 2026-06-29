@@ -13,6 +13,7 @@ import { aiChatWithRetry } from '../lib/ai-provider';
 import { logEntry, isAlreadyDone } from '../lib/audit-log';
 import { researchKeywords as ubersuggestResearch } from '../lib/ubersuggest-client';
 import { researchKeywords as semrushResearch } from '../lib/semrush-client';
+import { researchKeywords as ahrefsResearch } from '../lib/ahrefs-client';
 import { getToolTriggers, getBookingTriggers, getAiContext, getWritingSample, getImageSearchFallback, getDefaultCategory, getContentDomain, getSiteUrl, loadConfig } from '../lib/config';
 import { resetAiCallCounter, getAiCallCount } from '../lib/ai-provider';
 import { checkGscDelta, recordStep, logRun } from '../lib/learning';
@@ -44,7 +45,9 @@ export async function stepKeywordResearch(input: StepInput): Promise<StepOutput>
   const context = `${fm.category || getDefaultCategory()} ${(fm.tags || []).join(' ')}`;
 
   let kwResult;
-  if (process.env.SEMRUSH_API_KEY) {
+  if (process.env.AHREFS_API_KEY) {
+    kwResult = await ahrefsResearch(seed, context);
+  } else if (process.env.SEMRUSH_API_KEY) {
     kwResult = await semrushResearch(seed, context);
   } else {
     kwResult = await ubersuggestResearch(seed, input.slug, context);
