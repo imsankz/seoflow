@@ -14,6 +14,9 @@ export interface TechnicalAuditResult {
   lcpBreakdown?: LCPBreakdown;
   brokenLinks?: any[];
   redirectChains?: any[];
+  sitemap?: { valid: boolean; errors: string[]; urls: string[] };
+  robots?: { valid: boolean; errors: string[]; rules: any };
+  mobile?: { isMobileFriendly: boolean; errors: string[] };
   issues: string[];
   warnings: string[];
   quickWins: string[];
@@ -38,7 +41,7 @@ export async function stepTechnicalAudit(input: StepInput): Promise<StepOutput &
     console.log(`     📊 Running technical SEO audit for ${input.slug}`);
 
     // Run PSI, CrUX, and other checks
-    const [psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags] = await Promise.all([
+    const [psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags, sitemapResult, robotsResult, mobileResult] = await Promise.all([
       psi.run(input.slug),
       psi.getCrUX(input.slug),
       psi.getLCPBreakdown(input.slug),
@@ -46,9 +49,12 @@ export async function stepTechnicalAudit(input: StepInput): Promise<StepOutput &
       checkRedirectChains(input.slug),
       checkCanonicalTag(input.slug),
       checkHreflangTags(input.slug),
+      checkSitemap(input.slug),
+      checkRobotsTxt(input.slug),
+      checkMobileFriendly(input.slug),
     ]);
 
-    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags);
+    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags, sitemapResult, robotsResult);
 
     // Log findings
     if (auditResult.issues.length > 0) {
@@ -94,11 +100,41 @@ function analyzeTechnicalData(
   brokenLinks?: any[],
   redirectChains?: any[],
   canonicalTag?: string,
-  hreflangTags?: string[]
+  hreflangTags?: string[],
+  sitemapResult?: { valid: boolean; errors: string[]; urls: string[] },
+  robotsResult?: { valid: boolean; errors: string[]; rules: any },
+  mobileResult?: { isMobileFriendly: boolean; errors: string[] }
 ): TechnicalAuditResult {
   const issues: string[] = [];
   const warnings: string[] = [];
   const quickWins: string[] = [];
+
+  // Sitemap
+  if (sitemapResult) {
+    if (!sitemapResult.valid) {
+      issues.push(`Sitemap errors: ${sitemapResult.errors.join(', ')}`);
+    } else {
+      quickWins.push(`Sitemap valid (${sitemapResult.urls.length} URLs)`);
+    }
+  }
+
+  // Robots.txt
+  if (robotsResult) {
+    if (!robotsResult.valid) {
+      issues.push(`Robots.txt errors: ${robotsResult.errors.join(', ')}`);
+    } else {
+      quickWins.push('Robots.txt valid');
+    }
+  }
+
+  // Mobile-friendliness
+  if (mobileResult) {
+    if (!mobileResult.isMobileFriendly) {
+      issues.push(`Mobile-friendliness errors: ${mobileResult.errors.join(', ')}`);
+    } else {
+      quickWins.push('Page is mobile-friendly');
+    }
+  }
 
   // Canonical tag
   if (canonicalTag) {
@@ -220,6 +256,11 @@ function analyzeTechnicalData(
     psi,
     crux,
     lcpBreakdown,
+    brokenLinks,
+    redirectChains,
+    sitemap: sitemapResult,
+    robots: robotsResult,
+    mobile: mobileResult,
     issues,
     warnings,
     quickWins,

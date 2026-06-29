@@ -218,6 +218,160 @@ export class BrokenLinksChecker {
       return [];
     }
   }
+
+  /**
+   * Check sitemap for errors
+   */
+  static async checkSitemap(url: string): Promise<{ valid: boolean; errors: string[]; urls: string[] }> {
+    try {
+      const sitemapUrl = new URL('/sitemap.xml', url).toString();
+      const response = await fetch(sitemapUrl);
+
+      if (!response.ok) {
+        return {
+          valid: false,
+          errors: [`Sitemap not found (${response.status} ${response.statusText})`],
+          urls: [],
+        };
+      }
+
+      const xml = await response.text();
+
+      // Check if it's valid XML
+      if (!xml.startsWith('<?xml') && !xml.includes('<urlset')) {
+        return {
+          valid: false,
+          errors: ['Not a valid sitemap XML'],
+          urls: [],
+        };
+      }
+
+      // Extract URLs from sitemap
+      const urlPattern = /<loc>([^<]+)<\/loc>/g;
+      const urls: string[] = [];
+      let match;
+
+      while ((match = urlPattern.exec(xml)) !== null) {
+        urls.push(match[1].trim());
+      }
+
+      return {
+        valid: true,
+        errors: [],
+        urls,
+      };
+    } catch (error: any) {
+      return {
+        valid: false,
+        errors: [error.message],
+        urls: [],
+      };
+    }
+  }
+
+  /**
+   * Check robots.txt for errors
+   */
+  static async checkRobotsTxt(url: string): Promise<{ valid: boolean; errors: string[]; rules: any }> {
+    try {
+      const robotsUrl = new URL('/robots.txt', url).toString();
+      const response = await fetch(robotsUrl);
+
+      if (!response.ok) {
+        return {
+          valid: false,
+          errors: [`Robots.txt not found (${response.status} ${response.statusText})`],
+          rules: {},
+        };
+      }
+
+      const content = await response.text();
+
+      return {
+        valid: true,
+        errors: [],
+        rules: this.parseRobotsTxt(content),
+      };
+    } catch (error: any) {
+      return {
+        valid: false,
+        errors: [error.message],
+        rules: {},
+      };
+    }
+  }
+
+  /**
+   * Check if a page is mobile-friendly using Google's Mobile-Friendly Test API
+   */
+  static async checkMobileFriendly(url: string): Promise<{ isMobileFriendly: boolean; errors: string[] }> {
+    try {
+      // This is a simplified check using Puppeteer or similar tools
+      // For now, we'll use a simple heuristic based on viewport meta tag
+      const response = await fetch(url);
+      const html = await response.text();
+
+      const viewportPattern = /<meta[^>]+name=["']viewport["'][^>]+content=["']([^"']+)["']/i;
+      const viewportMatch = html.match(viewportPattern);
+
+      if (!viewportMatch) {
+        return {
+          isMobileFriendly: false,
+          errors: ['Missing viewport meta tag'],
+        };
+      }
+
+      const viewportContent = viewportMatch[1].toLowerCase();
+      if (!viewportContent.includes('width=device-width') || !viewportContent.includes('initial-scale=1')) {
+        return {
+          isMobileFriendly: false,
+          errors: ['Viewport meta tag is not properly configured for mobile devices'],
+        };
+      }
+
+      return {
+        isMobileFriendly: true,
+        errors: [],
+      };
+    } catch (error: any) {
+      console.error(`Failed to check mobile-friendliness for ${url}:`, error.message);
+      return {
+        isMobileFriendly: false,
+        errors: [error.message],
+      };
+    }
+  }
+
+  /**
+   * Parse robots.txt content
+   */
+  private static parseRobotsTxt(content: string): any {
+    const lines = content.split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
+    const rules: any = {};
+    let currentUserAgent = '*';
+
+    rules[currentUserAgent] = { allow: [], disallow: [] };
+
+    for (const line of lines) {
+      const [key, value] = line.split(':').map(s => s.trim());
+
+      if (key.toLowerCase() === 'user-agent') {
+        currentUserAgent = value;
+        if (!rules[currentUserAgent]) {
+          rules[currentUserAgent] = { allow: [], disallow: [] };
+        }
+      } else if (key.toLowerCase() === 'allow') {
+        rules[currentUserAgent].allow.push(value);
+      } else if (key.toLowerCase() === 'disallow') {
+        rules[currentUserAgent].disallow.push(value);
+      } else if (key.toLowerCase() === 'sitemap') {
+        if (!rules.sitemaps) rules.sitemaps = [];
+        rules.sitemaps.push(value);
+      }
+    }
+
+    return rules;
+  }
 }
 
 /**
@@ -248,4 +402,25 @@ export async function checkCanonicalTag(url: string): Promise<string | null> {
  */
 export async function checkHreflangTags(url: string): Promise<string[]> {
   return BrokenLinksChecker.checkHreflangTags(url);
+}
+
+/**
+ * Helper function for checking sitemap
+ */
+export async function checkSitemap(url: string): Promise<{ valid: boolean; errors: string[]; urls: string[] }> {
+  return BrokenLinksChecker.checkSitemap(url);
+}
+
+/**
+ * Helper function for checking robots.txt
+ */
+export async function checkRobotsTxt(url: string): Promise<{ valid: boolean; errors: string[]; rules: any }> {
+  return BrokenLinksChecker.checkRobotsTxt(url);
+}
+
+/**
+ * Helper function for checking mobile-friendliness
+ */
+export async function checkMobileFriendly(url: string): Promise<{ isMobileFriendly: boolean; errors: string[] }> {
+  return BrokenLinksChecker.checkMobileFriendly(url);
 }
