@@ -10,6 +10,7 @@
 set -e
 
 REPO="https://raw.githubusercontent.com/imsankz/seoflow/main"
+ROOT_DIR="$(pwd)"
 SEOFLOW_DIR=".seoflow"
 
 # ─── Banner ───────────────────────────────────────────────────────────────────
@@ -45,7 +46,8 @@ mkdir -p \
   "$SEOFLOW_DIR/scripts" \
   "$SEOFLOW_DIR/agents" \
   "$SEOFLOW_DIR/skills" \
-  "$SEOFLOW_DIR/data"
+  "$SEOFLOW_DIR/data" \
+  "$SEOFLOW_DIR/hooks"
 
 # Core pipeline files
 PIPELINE_FILES=(
@@ -147,7 +149,13 @@ curl -sSfL "$REPO/python/requirements.txt" \
 success "Python scripts downloaded (${#PYTHON_SCRIPTS[@]} scripts)"
 
 
-# ─── Step 5: Rewrite script paths in agents ───────────────────────────────────
+# ─── Step 5: Copy hook assets ────────────────────────────────────────────────
+mkdir -p "$SEOFLOW_DIR/hooks"
+cp "$ROOT_DIR/hooks/hooks.json" "$SEOFLOW_DIR/hooks/hooks.json" 2>/dev/null || true
+cp "$ROOT_DIR/hooks/run-python-hook.js" "$SEOFLOW_DIR/hooks/run-python-hook.js" 2>/dev/null || true
+cp "$ROOT_DIR/hooks/validate-schema.py" "$SEOFLOW_DIR/hooks/validate-schema.py" 2>/dev/null || true
+
+# ─── Step 6: Rewrite script paths in agents ───────────────────────────────────
 # Agents from seoflow reference `scripts/` (relative to their install root).
 # After SeoFlow install they live at `.seoflow/agents/` and scripts at `.seoflow/scripts/`.
 # We rewrite all path references so agents work regardless of the tool they're
@@ -176,7 +184,7 @@ done
 
 success "Script paths patched"
 
-# ─── Step 6: Detect AI coding tools ───────────────────────────────────────────
+# ─── Step 7: Detect AI coding tools ───────────────────────────────────────────
 echo ""
 echo "🔍 Detecting AI coding tools..."
 
@@ -239,7 +247,7 @@ if [ ${#DETECTED_TOOLS[@]} -eq 0 ]; then
 fi
 
 
-# ─── Step 7: Deploy agents to detected tools ──────────────────────────────────
+# ─── Step 8: Deploy agents to detected tools ──────────────────────────────────
 echo ""
 echo "📂 Deploying agents to detected tools..."
 

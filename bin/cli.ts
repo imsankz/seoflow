@@ -26,6 +26,9 @@ const HELP = `
     generate             Generate content from keywords/gaps
     publish              Publish unpublished posts
     validate             Check config + environment
+    extensions           List supported optional extensions
+    extensions install <id>  Install an optional extension
+    extensions status    Show installed extension state
 
   FLAGS (run, generate, publish)
     --slug <slug>        Process only this post
@@ -70,6 +73,9 @@ async function main() {
       break;
     case 'validate':
       await runValidate();
+      break;
+    case 'extensions':
+      await runExtensions(rest);
       break;
     default:
       console.error(`Unknown command: ${command}`);
@@ -130,6 +136,45 @@ async function runValidate() {
   loadEnv();
   const cfg = loadConfig();
   printValidation(cfg);
+}
+
+async function runExtensions(args: string[]) {
+  const { formatExtensionStatus, getSupportedExtensions, installExtension, getExtensionState } = await import('../lib/extensions');
+  const subcommand = args[0];
+  const extensionId = args[1];
+
+  if (subcommand === 'install') {
+    const result = installExtension(extensionId || '', { rootDir: process.cwd() });
+    if (result.status === 'unavailable') {
+      console.error(`Unknown extension: ${extensionId}`);
+      process.exit(1);
+    }
+    console.log(`Installed extension: ${result.extensionId}`);
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const state = getExtensionState(process.cwd());
+    const entries = Object.entries(state as Record<string, any>);
+    if (entries.length === 0) {
+      console.log('No extensions installed yet.');
+      return;
+    }
+    for (const [id, extState] of entries) {
+      console.log(`${id}: ${(extState as any).status}`);
+    }
+    return;
+  }
+
+  const supported = getSupportedExtensions();
+  console.log('Supported optional extensions:');
+  for (const ext of supported) {
+    console.log(`- ${ext.id}: ${ext.name} — ${ext.description}`);
+  }
+  console.log('\nInstalled state:');
+  for (const line of formatExtensionStatus(process.cwd())) {
+    console.log(line);
+  }
 }
 
 main().catch(e => {

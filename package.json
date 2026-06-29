@@ -13,6 +13,12 @@
   },
   "files": [
     "dist",
+    ".claude-plugin",
+    "hooks",
+    "install.sh",
+    "install.ps1",
+    "uninstall.sh",
+    "uninstall.ps1",
     "README.md",
     "LICENSE"
   ],
@@ -28,6 +34,8 @@
     "seoflow:cluster": "npx tsx run.ts cluster",
     "seoflow:brief": "npx tsx run.ts brief",
     "seoflow:learn": "npx tsx run.ts learn",
+    "install:repo": "bash ./install.sh",
+    "uninstall:repo": "bash ./uninstall.sh",
     "test": "npx tsx --test tests/**/*.test.ts",
     "test:unit": "npx tsx --test tests/**/*.test.ts --test-name-pattern=unit",
     "test:integration": "npx tsx --test tests/integration.test.ts"

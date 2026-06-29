@@ -215,7 +215,7 @@ async function getAccessToken() {
     return null;
   }
 }
-function gscPost(path14, body, token, quotaProject) {
+function gscPost(path15, body, token, quotaProject) {
   const BASE = "searchconsole.googleapis.com";
   const API = "/webmasters/v3";
   const payload = JSON.stringify(body);
@@ -231,7 +231,7 @@ function gscPost(path14, body, token, quotaProject) {
     const req = https.request(
       {
         hostname: BASE,
-        path: API + path14,
+        path: API + path15,
         method: "POST",
         headers
       },
@@ -270,9 +270,9 @@ function getSiteProperty() {
 }
 function urlToSlug(url, siteUrl) {
   const cfg = loadConfig();
-  const path14 = url.replace(/^https?:\/\/[^/]+/, "");
+  const path15 = url.replace(/^https?:\/\/[^/]+/, "");
   const blogPrefix = cfg.blogPrefix || "/blog/";
-  return path14.replace(new RegExp(`^${blogPrefix}`), "").replace(/\/$/, "");
+  return path15.replace(new RegExp(`^${blogPrefix}`), "").replace(/\/$/, "");
 }
 async function isGscApiAvailable() {
   if (_available !== null) return _available;
@@ -432,8 +432,8 @@ function parseGscPagesFromCsv() {
     const parts = line.split(",");
     if (parts.length < 4) continue;
     const url = parts[cols.url].trim().replace(/"/g, "");
-    const path14 = url.replace(/^https?:\/\/[^/]+/, "");
-    const slug = path14.replace(new RegExp(`^${blogPrefix}`), "").replace(/\/$/, "");
+    const path15 = url.replace(/^https?:\/\/[^/]+/, "");
+    const slug = path15.replace(new RegExp(`^${blogPrefix}`), "").replace(/\/$/, "");
     map[slug] = {
       url,
       clicks: parseInt(parts[cols.clicks]) || 0,
@@ -1921,15 +1921,15 @@ async function generateClusterPlan(seedKeyword) {
   return plan;
 }
 function saveClusterPlan(plan, dir) {
-  const fs16 = __require("fs");
-  const path14 = __require("path");
-  if (!fs16.existsSync(dir)) {
-    fs16.mkdirSync(dir, { recursive: true });
+  const fs17 = __require("fs");
+  const path15 = __require("path");
+  if (!fs17.existsSync(dir)) {
+    fs17.mkdirSync(dir, { recursive: true });
   }
-  const jsonPath = path14.join(dir, "cluster-plan.json");
-  fs16.writeFileSync(jsonPath, JSON.stringify(plan, null, 2));
-  const mdPath = path14.join(dir, "cluster-plan.md");
-  fs16.writeFileSync(mdPath, clusterPlanToMarkdown(plan));
+  const jsonPath = path15.join(dir, "cluster-plan.json");
+  fs17.writeFileSync(jsonPath, JSON.stringify(plan, null, 2));
+  const mdPath = path15.join(dir, "cluster-plan.md");
+  fs17.writeFileSync(mdPath, clusterPlanToMarkdown(plan));
   console.log(`\u2705 Cluster plan saved to ${dir}`);
 }
 function clusterPlanToMarkdown(plan) {
@@ -2210,16 +2210,16 @@ async function generateContentBrief(keyword) {
   return brief;
 }
 function saveContentBrief(brief, dir = "content-briefs") {
-  const fs16 = __require("fs");
-  const path14 = __require("path");
-  if (!fs16.existsSync(dir)) {
-    fs16.mkdirSync(dir, { recursive: true });
+  const fs17 = __require("fs");
+  const path15 = __require("path");
+  if (!fs17.existsSync(dir)) {
+    fs17.mkdirSync(dir, { recursive: true });
   }
   const slug = brief.primaryKeyword.toLowerCase().replace(/\s+/g, "-");
-  const mdPath = path14.join(dir, `${slug}-brief.md`);
-  fs16.writeFileSync(mdPath, contentBriefToMarkdown(brief));
-  const jsonPath = path14.join(dir, `${slug}-brief.json`);
-  fs16.writeFileSync(jsonPath, JSON.stringify(brief, null, 2));
+  const mdPath = path15.join(dir, `${slug}-brief.md`);
+  fs17.writeFileSync(mdPath, contentBriefToMarkdown(brief));
+  const jsonPath = path15.join(dir, `${slug}-brief.json`);
+  fs17.writeFileSync(jsonPath, JSON.stringify(brief, null, 2));
   console.log(`\u2705 Content brief saved to ${dir}`);
 }
 function contentBriefToMarkdown(brief) {
@@ -2313,6 +2313,177 @@ var init_content_brief = __esm({
   }
 });
 
+// lib/extensions.ts
+var extensions_exports = {};
+__export(extensions_exports, {
+  formatExtensionStatus: () => formatExtensionStatus,
+  getExtensionState: () => getExtensionState,
+  getSupportedExtensions: () => getSupportedExtensions,
+  installExtension: () => installExtension
+});
+import fs9 from "fs";
+import path7 from "path";
+import { fileURLToPath } from "url";
+function resolveRootDir(rootDir) {
+  const base = rootDir || process.cwd();
+  return path7.resolve(base);
+}
+function getStateFilePath(rootDir) {
+  const resolvedRootDir = resolveRootDir(rootDir);
+  return path7.join(resolvedRootDir, ".seoflow", "extensions.json");
+}
+function findExtensionBundleRoot(extensionId, rootDir) {
+  const candidates = [
+    path7.resolve(resolveRootDir(rootDir), "extensions", extensionId),
+    path7.resolve(path7.dirname(fileURLToPath(import.meta.url)), "..", "extensions", extensionId),
+    path7.resolve(path7.dirname(fileURLToPath(import.meta.url)), "..", "..", "extensions", extensionId)
+  ];
+  return candidates.find((candidate) => fs9.existsSync(candidate)) || null;
+}
+function provisionExtensionBundle(extensionId, rootDir) {
+  const resolvedRootDir = resolveRootDir(rootDir);
+  const sourceDir = findExtensionBundleRoot(extensionId, resolvedRootDir);
+  if (!sourceDir) return;
+  const destinationDir = path7.join(resolvedRootDir, ".seoflow", "extensions", extensionId);
+  fs9.mkdirSync(path7.dirname(destinationDir), { recursive: true });
+  fs9.rmSync(destinationDir, { recursive: true, force: true });
+  fs9.cpSync(sourceDir, destinationDir, { recursive: true });
+}
+function readState(rootDir) {
+  const statePath = getStateFilePath(rootDir);
+  if (!fs9.existsSync(statePath)) return {};
+  try {
+    const parsed = JSON.parse(fs9.readFileSync(statePath, "utf8"));
+    return parsed;
+  } catch {
+    return {};
+  }
+}
+function writeState(rootDir, state) {
+  const statePath = getStateFilePath(rootDir);
+  fs9.mkdirSync(path7.dirname(statePath), { recursive: true });
+  fs9.writeFileSync(statePath, JSON.stringify(state, null, 2));
+}
+function getSupportedExtensions() {
+  return SUPPORTED_EXTENSIONS.map((ext) => ({ ...ext }));
+}
+function getExtensionState(rootDir, extensionId) {
+  const resolvedRootDir = resolveRootDir(rootDir);
+  const state = readState(resolvedRootDir);
+  if (extensionId) {
+    const definition = SUPPORTED_EXTENSIONS.find((ext) => ext.id === extensionId);
+    if (!definition) {
+      return { id: extensionId, status: "unavailable", rootDir: resolvedRootDir };
+    }
+    return state[extensionId] || { id: extensionId, status: "available", rootDir: resolvedRootDir };
+  }
+  return state;
+}
+function installExtension(extensionId, options = {}) {
+  const resolvedRootDir = resolveRootDir(options.rootDir);
+  const definition = SUPPORTED_EXTENSIONS.find((ext) => ext.id === extensionId);
+  if (!definition) {
+    const unavailableState = {
+      id: extensionId,
+      status: "unavailable",
+      rootDir: resolvedRootDir
+    };
+    return { installed: false, extensionId, status: "unavailable", state: unavailableState };
+  }
+  const state = readState(resolvedRootDir);
+  const nextState = {
+    id: extensionId,
+    status: "installed",
+    installedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    rootDir: resolvedRootDir
+  };
+  state[extensionId] = nextState;
+  writeState(resolvedRootDir, state);
+  provisionExtensionBundle(extensionId, resolvedRootDir);
+  return { installed: true, extensionId, status: "installed", state: nextState };
+}
+function formatExtensionStatus(rootDir) {
+  const supported = getSupportedExtensions();
+  const state = getExtensionState(rootDir);
+  return supported.map((extension) => {
+    const current = state[extension.id];
+    const status = current?.status || "available";
+    const installedLabel = status === "installed" ? "installed" : status;
+    return `- ${extension.id}: ${installedLabel} \u2014 ${extension.description}`;
+  });
+}
+var SUPPORTED_EXTENSIONS;
+var init_extensions = __esm({
+  "lib/extensions.ts"() {
+    "use strict";
+    SUPPORTED_EXTENSIONS = [
+      {
+        id: "dataforseo",
+        name: "DataForSEO",
+        description: "Live SERP, keyword, backlink, and on-page data via DataForSEO.",
+        category: "data",
+        installHint: "Add your DataForSEO credentials to .env.local or the MCP configuration."
+      },
+      {
+        id: "firecrawl",
+        name: "Firecrawl",
+        description: "Full-site crawling, sitemap discovery, and content extraction.",
+        category: "crawl",
+        installHint: "Connect the Firecrawl MCP server or install the optional extension bundle."
+      },
+      {
+        id: "banana",
+        name: "Claude Banana",
+        description: "AI image generation for OG images, hero images, and schema assets.",
+        category: "images",
+        installHint: "Install the nanobanana MCP server and configure your image generation endpoint."
+      },
+      {
+        id: "ahrefs",
+        name: "Ahrefs",
+        description: "Backlink, rank, and competitor visibility data from Ahrefs.",
+        category: "data",
+        installHint: "Provide your Ahrefs API credentials through the configured environment variables."
+      },
+      {
+        id: "seranking",
+        name: "SE Ranking",
+        description: "Visibility tracking, keyword rank data, and AI-share-of-voice reports.",
+        category: "monitoring",
+        installHint: "Enable the SE Ranking integration and add the required API tokens."
+      },
+      {
+        id: "profound",
+        name: "Profound",
+        description: "LLM citation and brand mention monitoring across AI answer surfaces.",
+        category: "monitoring",
+        installHint: "Connect the Profound tracker and configure the reporting endpoint."
+      },
+      {
+        id: "bing",
+        name: "Bing Webmaster",
+        description: "Bing indexing, URL submission, and site ownership verification support.",
+        category: "tech",
+        installHint: "Add Bing Webmaster credentials and verify ownership for the target domain."
+      },
+      {
+        id: "indexnow",
+        name: "IndexNow",
+        description: "Ping search engines when new content is published.",
+        category: "tech",
+        installHint: "Set the publishing index host and key in your site configuration."
+      },
+      {
+        id: "unlighthouse",
+        name: "Unlighthouse",
+        description: "Bulk Lighthouse auditing for content and technical performance review.",
+        category: "monitoring",
+        installHint: "Install the Unlighthouse CLI and point it at your site URLs."
+      }
+    ];
+  }
+});
+
 // lib/pexels-client.ts
 import https3 from "https";
 function fetchPexelsImage(query) {
@@ -2391,16 +2562,16 @@ var init_pexels_client = __esm({
 });
 
 // lib/ubersuggest-client.ts
-import fs9 from "fs";
-import path7 from "path";
+import fs10 from "fs";
+import path8 from "path";
 function cachePath() {
   return loadConfig().keywordCachePath;
 }
 function loadCache() {
   try {
     const p = cachePath();
-    if (fs9.existsSync(p)) {
-      return JSON.parse(fs9.readFileSync(p, "utf8"));
+    if (fs10.existsSync(p)) {
+      return JSON.parse(fs10.readFileSync(p, "utf8"));
     }
   } catch {
   }
@@ -2409,8 +2580,8 @@ function loadCache() {
 function findRoot3() {
   let dir = process.cwd();
   for (let i = 0; i < 10; i++) {
-    if (fs9.existsSync(path7.join(dir, "seoflow.config.json"))) return dir;
-    const p = path7.dirname(dir);
+    if (fs10.existsSync(path8.join(dir, "seoflow.config.json"))) return dir;
+    const p = path8.dirname(dir);
     if (p === dir) break;
     dir = p;
   }
@@ -3067,8 +3238,8 @@ var init_schema = __esm({
 
 // lib/python/python-manager.ts
 import { exec, execSync as execSync2 } from "child_process";
-import path8 from "path";
-import fs10 from "fs";
+import path9 from "path";
+import fs11 from "fs";
 import { promisify } from "util";
 var execPromise, PythonManager;
 var init_python_manager = __esm({
@@ -3097,9 +3268,9 @@ var init_python_manager = __esm({
       static getPythonPath() {
         if (_PythonManager.virtualEnvPath) {
           if (process.platform === "win32") {
-            return path8.join(_PythonManager.virtualEnvPath, "Scripts", "python.exe");
+            return path9.join(_PythonManager.virtualEnvPath, "Scripts", "python.exe");
           } else {
-            return path8.join(_PythonManager.virtualEnvPath, "bin", "python");
+            return path9.join(_PythonManager.virtualEnvPath, "bin", "python");
           }
         }
         return _PythonManager.pythonPath;
@@ -3131,8 +3302,8 @@ var init_python_manager = __esm({
        */
       static run(options) {
         const { scriptName, args = [], timeout = 6e4, workingDir = process.cwd() } = options;
-        const scriptPath = path8.resolve(workingDir, "python", `${scriptName}.py`);
-        if (!fs10.existsSync(scriptPath)) {
+        const scriptPath = path9.resolve(workingDir, "python", `${scriptName}.py`);
+        if (!fs11.existsSync(scriptPath)) {
           return {
             stdout: "",
             stderr: `Script not found: ${scriptPath}`,
@@ -3168,8 +3339,8 @@ var init_python_manager = __esm({
        */
       static async runAsync(options) {
         const { scriptName, args = [], timeout = 6e4, workingDir = process.cwd() } = options;
-        const scriptPath = path8.resolve(workingDir, "python", `${scriptName}.py`);
-        if (!fs10.existsSync(scriptPath)) {
+        const scriptPath = path9.resolve(workingDir, "python", `${scriptName}.py`);
+        if (!fs11.existsSync(scriptPath)) {
           return Promise.resolve({
             stdout: "",
             stderr: `Script not found: ${scriptPath}`,
@@ -3223,7 +3394,7 @@ var init_python_manager = __esm({
        * Install dependencies from requirements.txt
        */
       static installDependencies(requirementsPath = "python/requirements.txt") {
-        if (!fs10.existsSync(requirementsPath)) {
+        if (!fs11.existsSync(requirementsPath)) {
           return {
             stdout: "",
             stderr: `Requirements file not found: ${requirementsPath}`,
@@ -3238,10 +3409,10 @@ var init_python_manager = __esm({
        */
       static checkDependencies() {
         const requirementsPath = "python/requirements.txt";
-        if (!fs10.existsSync(requirementsPath)) {
+        if (!fs11.existsSync(requirementsPath)) {
           return { missing: ["requirements.txt file not found"], installed: [] };
         }
-        const requirements = fs10.readFileSync(requirementsPath, "utf8").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#")).map((line) => line.split(/[<>=]/)[0].trim());
+        const requirements = fs11.readFileSync(requirementsPath, "utf8").split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#")).map((line) => line.split(/[<>=]/)[0].trim());
         const missing = [];
         const installed = [];
         requirements.forEach((packageName) => {
@@ -3259,7 +3430,7 @@ var init_python_manager = __esm({
 });
 
 // lib/technical/psi.ts
-import path9 from "path";
+import path10 from "path";
 function getPSIInstance(apiKey) {
   if (!psiInstance) {
     psiInstance = new PageSpeedInsights(apiKey);
@@ -3268,7 +3439,7 @@ function getPSIInstance(apiKey) {
 }
 function validateUrl(url) {
   try {
-    const scriptPath = path9.join(process.cwd(), "python", "url_safety.py");
+    const scriptPath = path10.join(process.cwd(), "python", "url_safety.py");
     const cmd = `python3 ${scriptPath} --url "${url}"`;
     execSync(cmd, { encoding: "utf8", stdio: "ignore" });
     return true;
@@ -3771,8 +3942,8 @@ var init_content_quality2 = __esm({
 });
 
 // lib/reports/pdf-generator.ts
-import path10 from "path";
-import fs11 from "fs";
+import path11 from "path";
+import fs12 from "fs";
 var PDFGenerator;
 var init_pdf_generator = __esm({
   "lib/reports/pdf-generator.ts"() {
@@ -3783,12 +3954,12 @@ var init_pdf_generator = __esm({
        * Generates a PDF report using the Claude SEO report generator
        */
       static generate(data, outputPath) {
-        const outputDir = path10.dirname(outputPath);
-        if (!fs11.existsSync(outputDir)) {
-          fs11.mkdirSync(outputDir, { recursive: true });
+        const outputDir = path11.dirname(outputPath);
+        if (!fs12.existsSync(outputDir)) {
+          fs12.mkdirSync(outputDir, { recursive: true });
         }
-        const tempDataPath = path10.join(outputDir, `temp-report-data-${Date.now()}.json`);
-        fs11.writeFileSync(tempDataPath, JSON.stringify(data.data, null, 2));
+        const tempDataPath = path11.join(outputDir, `temp-report-data-${Date.now()}.json`);
+        fs12.writeFileSync(tempDataPath, JSON.stringify(data.data, null, 2));
         try {
           if (!PythonManager.isPythonAvailable()) {
             throw new Error("Python not available - install Python 3.10+");
@@ -3814,7 +3985,7 @@ var init_pdf_generator = __esm({
             timeout: 12e4
             // 2 minutes
           });
-          if (result.code === 0 && fs11.existsSync(outputPath)) {
+          if (result.code === 0 && fs12.existsSync(outputPath)) {
             console.log(`PDF report generated successfully: ${outputPath}`);
             return outputPath;
           } else {
@@ -3825,8 +3996,8 @@ var init_pdf_generator = __esm({
           console.error("PDF generation error:", error);
           throw new Error(`PDF generation failed: ${error}`);
         } finally {
-          if (fs11.existsSync(tempDataPath)) {
-            fs11.unlinkSync(tempDataPath);
+          if (fs12.existsSync(tempDataPath)) {
+            fs12.unlinkSync(tempDataPath);
           }
         }
       }
@@ -3866,8 +4037,8 @@ var init_pdf_generator = __esm({
 
 // lib/reports/reports.ts
 import { execSync as execSync3 } from "child_process";
-import path11 from "path";
-import fs12 from "fs";
+import path12 from "path";
+import fs13 from "fs";
 var ReportGenerator;
 var init_reports = __esm({
   "lib/reports/reports.ts"() {
@@ -3887,18 +4058,18 @@ var init_reports = __esm({
           outputDir = "reports",
           filename = `seoflow-report-${Date.now()}.${format}`
         } = options;
-        if (!fs12.existsSync(outputDir)) {
-          fs12.mkdirSync(outputDir, { recursive: true });
+        if (!fs13.existsSync(outputDir)) {
+          fs13.mkdirSync(outputDir, { recursive: true });
         }
-        const outputPath = path11.join(outputDir, filename);
+        const outputPath = path12.join(outputDir, filename);
         try {
           if (format === "pdf") {
             return PDFGenerator.generateSimpleReport(data, new URL(data.url).hostname, outputPath);
           } else {
-            const scriptPath = path11.join(process.cwd(), "python", "google_report.py");
+            const scriptPath = path12.join(process.cwd(), "python", "google_report.py");
             const cmd = this.buildCommand(data, format, includeTechnical, includeContent, includeSchema, includeBacklinks, outputPath);
             execSync3(cmd, { encoding: "utf8", stdio: "ignore" });
-            if (fs12.existsSync(outputPath)) {
+            if (fs13.existsSync(outputPath)) {
               console.log(`\u2705 Report generated: ${outputPath}`);
               return outputPath;
             } else {
@@ -3919,7 +4090,7 @@ var init_reports = __esm({
       static buildCommand(data, format, includeTechnical, includeContent, includeSchema, includeBacklinks, outputPath) {
         const args = [
           "python3",
-          path11.join(process.cwd(), "python", "google_report.py"),
+          path12.join(process.cwd(), "python", "google_report.py"),
           "--url",
           `"${data.url}"`,
           "--score",
@@ -3961,7 +4132,7 @@ var init_reports = __esm({
           version: "1.0",
           data
         };
-        fs12.writeFileSync(outputPath, JSON.stringify(report, null, 2));
+        fs13.writeFileSync(outputPath, JSON.stringify(report, null, 2));
         console.log(`\u2705 Fallback report generated: ${outputPath}`);
         return outputPath;
       }
@@ -4049,7 +4220,7 @@ __export(steps_exports, {
   stepKeywordResearch: () => stepKeywordResearch,
   stepNeuronWriter: () => stepNeuronWriter
 });
-import fs13 from "fs";
+import fs14 from "fs";
 function toolTriggers() {
   if (!_toolTriggers) _toolTriggers = getToolTriggers();
   return _toolTriggers;
@@ -4517,7 +4688,7 @@ async function processPost(slug, filePath, gscPages, auditLog, opts) {
   }
   console.log(`
   \u{1F4C4} ${slug}`);
-  const raw = fs13.readFileSync(filePath, "utf8");
+  const raw = fs14.readFileSync(filePath, "utf8");
   const parsed = parseMdx(raw);
   const gsc = gscPages[slug] || {};
   const input = { slug, filePath, content: parsed.content, frontmatter: parsed.frontmatter, gsc };
@@ -4639,7 +4810,7 @@ async function processPost(slug, filePath, gscPages, auditLog, opts) {
   if (allChanges.length > 0) {
     if (!dryRun) {
       const newRaw = buildFrontmatterBlock(state.frontmatter) + state.content;
-      fs13.writeFileSync(filePath, newRaw, "utf8");
+      fs14.writeFileSync(filePath, newRaw, "utf8");
     }
     console.log(`     ${dryRun ? "[DRY RUN] Would apply" : "\u2705 Written"} (${allChanges.length} changes)`);
     for (const c of allChanges) console.log(`       \u2022 ${c}`);
@@ -4700,8 +4871,8 @@ var run_exports = {};
 __export(run_exports, {
   runPipeline: () => runPipeline
 });
-import fs14 from "fs";
-import path12 from "path";
+import fs15 from "fs";
+import path13 from "path";
 async function cmdCluster() {
   loadEnv();
   loadConfig();
@@ -4748,9 +4919,42 @@ async function cmdBrief() {
   console.log(`   Sections: ${brief.outline.length}`);
   console.log("");
 }
+async function cmdExtensions() {
+  const { formatExtensionStatus: formatExtensionStatus2, getSupportedExtensions: getSupportedExtensions2, installExtension: installExtension2, getExtensionState: getExtensionState2 } = await Promise.resolve().then(() => (init_extensions(), extensions_exports));
+  const subcommand = rawArgs[1];
+  const extensionId = rawArgs[2];
+  if (subcommand === "install") {
+    const result = installExtension2(extensionId || "", { rootDir: process.cwd() });
+    if (result.status === "unavailable") {
+      console.error(`Unknown extension: ${extensionId}`);
+      process.exit(1);
+    }
+    console.log(`Installed extension: ${result.extensionId}`);
+    return;
+  }
+  if (subcommand === "status") {
+    const state = getExtensionState2(process.cwd());
+    if (Object.keys(state).length === 0) {
+      console.log("No extensions installed yet.");
+      return;
+    }
+    for (const [id, extState] of Object.entries(state)) {
+      console.log(`${id}: ${extState.status}`);
+    }
+    return;
+  }
+  console.log("Supported optional extensions:");
+  for (const ext of getSupportedExtensions2()) {
+    console.log(`- ${ext.id}: ${ext.name} \u2014 ${ext.description}`);
+  }
+  console.log("\nInstalled state:");
+  for (const line of formatExtensionStatus2(process.cwd())) {
+    console.log(line);
+  }
+}
 async function cmdInit() {
-  const configPath = path12.join(process.cwd(), "seoflow.config.json");
-  if (fs14.existsSync(configPath)) {
+  const configPath = path13.join(process.cwd(), "seoflow.config.json");
+  if (fs15.existsSync(configPath)) {
     console.log("\u2713 seoflow.config.json already exists");
     console.log("  Delete it and re-run to reconfigure, or edit it directly.");
     return;
@@ -4758,8 +4962,8 @@ async function cmdInit() {
   console.log("\n  Run the interactive installer:\n");
   console.log("  bash <(curl -s https://raw.githubusercontent.com/imsankz/seoflow/main/install.sh)\n");
   console.log("  Or copy the template and fill it in:");
-  const templatePath = path12.join(process.cwd(), ".seoflow", "seoflow.config.template.json");
-  if (fs14.existsSync(templatePath)) {
+  const templatePath = path13.join(process.cwd(), ".seoflow", "seoflow.config.template.json");
+  if (fs15.existsSync(templatePath)) {
     console.log(`  cp ${templatePath} seoflow.config.json
 `);
   }
@@ -4770,7 +4974,7 @@ async function cmdStatus() {
   const auditLog = loadAuditLog();
   await detectGscSource();
   const postsDir = getPostsDir();
-  const allFiles = fs14.existsSync(postsDir) ? fs14.readdirSync(postsDir).filter((f) => f.endsWith(".mdx")) : [];
+  const allFiles = fs15.existsSync(postsDir) ? fs15.readdirSync(postsDir).filter((f) => f.endsWith(".mdx")) : [];
   const posts = auditLog.posts || {};
   const completed = Object.values(posts).filter((p) => p.status === "completed").length;
   const pending = allFiles.length - completed;
@@ -4809,15 +5013,15 @@ async function cmdStatus() {
 function cmdLearn() {
   loadEnv();
   loadConfig();
-  const learningPath = path12.join(
-    path12.dirname(getAuditLogPath()),
+  const learningPath = path13.join(
+    path13.dirname(getAuditLogPath()),
     "learning.json"
   );
-  if (!fs14.existsSync(learningPath)) {
+  if (!fs15.existsSync(learningPath)) {
     console.log("\n\u26A0\uFE0F  No learning data yet. Run the pipeline on some posts first.\n");
     return;
   }
-  const db = JSON.parse(fs14.readFileSync(learningPath, "utf8"));
+  const db = JSON.parse(fs15.readFileSync(learningPath, "utf8"));
   console.log("\n\u{1F9E0} SeoFlow Learning Insights");
   console.log("\u2500".repeat(60));
   const steps = Object.entries(db.steps || {});
@@ -4851,21 +5055,21 @@ function cmdLearn() {
 function cmdLearningExport(outFile) {
   loadEnv();
   loadConfig();
-  const dataDir = path12.dirname(getAuditLogPath());
-  const learningPath = path12.join(dataDir, "learning.json");
-  const baselinesPath = path12.join(dataDir, "gsc-baselines.json");
+  const dataDir = path13.dirname(getAuditLogPath());
+  const learningPath = path13.join(dataDir, "learning.json");
+  const baselinesPath = path13.join(dataDir, "gsc-baselines.json");
   const bundle = {
     exportedAt: (/* @__PURE__ */ new Date()).toISOString(),
     version: "2.0"
   };
-  if (fs14.existsSync(learningPath)) {
-    bundle.learning = JSON.parse(fs14.readFileSync(learningPath, "utf8"));
+  if (fs15.existsSync(learningPath)) {
+    bundle.learning = JSON.parse(fs15.readFileSync(learningPath, "utf8"));
   }
-  if (fs14.existsSync(baselinesPath)) {
-    bundle.gscBaselines = JSON.parse(fs14.readFileSync(baselinesPath, "utf8"));
+  if (fs15.existsSync(baselinesPath)) {
+    bundle.gscBaselines = JSON.parse(fs15.readFileSync(baselinesPath, "utf8"));
   }
   const dest = outFile || `seoflow-learning-${(/* @__PURE__ */ new Date()).toISOString().split("T")[0]}.json`;
-  fs14.writeFileSync(dest, JSON.stringify(bundle, null, 2));
+  fs15.writeFileSync(dest, JSON.stringify(bundle, null, 2));
   console.log(`
 \u2705 Learning data exported to: ${dest}`);
   console.log("   Import on another machine: seoflow learning import " + dest + "\n");
@@ -4873,21 +5077,21 @@ function cmdLearningExport(outFile) {
 function cmdLearningImport(inFile) {
   loadEnv();
   loadConfig();
-  if (!inFile || !fs14.existsSync(inFile)) {
+  if (!inFile || !fs15.existsSync(inFile)) {
     console.error(`
 \u274C File not found: ${inFile || "(no file specified)"}`);
     console.error("   Usage: seoflow learning import <file.json>\n");
     process.exit(1);
   }
-  const bundle = JSON.parse(fs14.readFileSync(inFile, "utf8"));
-  const dataDir = path12.dirname(getAuditLogPath());
-  if (!fs14.existsSync(dataDir)) fs14.mkdirSync(dataDir, { recursive: true });
+  const bundle = JSON.parse(fs15.readFileSync(inFile, "utf8"));
+  const dataDir = path13.dirname(getAuditLogPath());
+  if (!fs15.existsSync(dataDir)) fs15.mkdirSync(dataDir, { recursive: true });
   if (bundle.learning) {
-    fs14.writeFileSync(path12.join(dataDir, "learning.json"), JSON.stringify(bundle.learning, null, 2));
+    fs15.writeFileSync(path13.join(dataDir, "learning.json"), JSON.stringify(bundle.learning, null, 2));
     console.log("  \u2705 Imported learning.json");
   }
   if (bundle.gscBaselines) {
-    fs14.writeFileSync(path12.join(dataDir, "gsc-baselines.json"), JSON.stringify(bundle.gscBaselines, null, 2));
+    fs15.writeFileSync(path13.join(dataDir, "gsc-baselines.json"), JSON.stringify(bundle.gscBaselines, null, 2));
     console.log("  \u2705 Imported gsc-baselines.json");
   }
   console.log(`
@@ -4897,6 +5101,10 @@ function cmdLearningImport(inFile) {
 async function runPipeline() {
   if (VERB === "init") {
     await cmdInit();
+    return;
+  }
+  if (VERB === "extensions") {
+    await cmdExtensions();
     return;
   }
   loadEnv();
@@ -5010,7 +5218,7 @@ async function runPipeline() {
     }
     return;
   }
-  const files = fs14.readdirSync(postsDir).filter((f) => f.endsWith(".mdx"));
+  const files = fs15.readdirSync(postsDir).filter((f) => f.endsWith(".mdx"));
   console.log(`\u{1F4C1} ${files.length} posts
 `);
   let candidates = files.map((f) => {
@@ -5019,7 +5227,7 @@ async function runPipeline() {
     const prediction = predictPriority(slug, gsc);
     return {
       slug,
-      filePath: path12.join(postsDir, f),
+      filePath: path13.join(postsDir, f),
       priority: prediction.totalScore || 0,
       gsc,
       patterns: prediction.patterns
@@ -5051,7 +5259,7 @@ ${"\u2500".repeat(60)}`);
     results.push(r);
     if (!DRY_RUN && r.after) {
       try {
-        const raw = fs14.readFileSync(c.filePath, "utf8");
+        const raw = fs15.readFileSync(c.filePath, "utf8");
         const parsed = await Promise.resolve().then(() => (init_mdx_parser(), mdx_parser_exports));
         const fm = parsed.parseMdx(raw).frontmatter;
         recordContentSnapshot(c.slug, {
@@ -5165,8 +5373,8 @@ var init_exports = {};
 __export(init_exports, {
   interactiveInit: () => interactiveInit
 });
-import fs15 from "fs";
-import path13 from "path";
+import fs16 from "fs";
+import path14 from "path";
 import readline from "readline";
 function ask(query, def = "") {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -5180,8 +5388,8 @@ function ask(query, def = "") {
 }
 async function interactiveInit() {
   const cwd = process.cwd();
-  const configPath = path13.join(cwd, "seoflow.config.json");
-  if (fs15.existsSync(configPath)) {
+  const configPath = path14.join(cwd, "seoflow.config.json");
+  if (fs16.existsSync(configPath)) {
     console.log("\n  \u26A0\uFE0F  seoflow.config.json already exists. Delete it first to reconfigure.\n");
     return;
   }
@@ -5230,18 +5438,18 @@ async function interactiveInit() {
       majorCities: []
     }
   };
-  fs15.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+  fs16.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
   console.log(`
   \u2705 seoflow.config.json created`);
-  const dataDir = path13.join(cwd, ".seoflow", "data");
-  if (!fs15.existsSync(dataDir)) {
-    fs15.mkdirSync(dataDir, { recursive: true });
+  const dataDir = path14.join(cwd, ".seoflow", "data");
+  if (!fs16.existsSync(dataDir)) {
+    fs16.mkdirSync(dataDir, { recursive: true });
     console.log("  \u2705 .seoflow/data/ created");
   }
   try {
-    const pkgPath = path13.join(cwd, "package.json");
-    if (fs15.existsSync(pkgPath)) {
-      const pkg = JSON.parse(fs15.readFileSync(pkgPath, "utf8"));
+    const pkgPath = path14.join(cwd, "package.json");
+    if (fs16.existsSync(pkgPath)) {
+      const pkg = JSON.parse(fs16.readFileSync(pkgPath, "utf8"));
       pkg.scripts = {
         ...pkg.scripts,
         seoflow: "npx tsx .seoflow/run.ts",
@@ -5250,17 +5458,17 @@ async function interactiveInit() {
         "seoflow:generate": "npx tsx .seoflow/run.ts generate",
         "seoflow:publish": "npx tsx .seoflow/run.ts publish"
       };
-      fs15.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+      fs16.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
       console.log("  \u2705 npm scripts added to package.json");
     }
   } catch {
   }
   try {
-    const gitignorePath = path13.join(cwd, ".gitignore");
-    if (fs15.existsSync(gitignorePath)) {
-      const content = fs15.readFileSync(gitignorePath, "utf8");
+    const gitignorePath = path14.join(cwd, ".gitignore");
+    if (fs16.existsSync(gitignorePath)) {
+      const content = fs16.readFileSync(gitignorePath, "utf8");
       if (!content.includes(".seoflow/data/")) {
-        fs15.appendFileSync(gitignorePath, "\n# SeoFlow generated data\n.seoflow/data/\n");
+        fs16.appendFileSync(gitignorePath, "\n# SeoFlow generated data\n.seoflow/data/\n");
         console.log("  \u2705 Added .seoflow/data/ to .gitignore");
       }
     }
@@ -5295,6 +5503,9 @@ var HELP = `
     generate             Generate content from keywords/gaps
     publish              Publish unpublished posts
     validate             Check config + environment
+    extensions           List supported optional extensions
+    extensions install <id>  Install an optional extension
+    extensions status    Show installed extension state
 
   FLAGS (run, generate, publish)
     --slug <slug>        Process only this post
@@ -5335,6 +5546,9 @@ async function main() {
       break;
     case "validate":
       await runValidate();
+      break;
+    case "extensions":
+      await runExtensions(rest);
       break;
     default:
       console.error(`Unknown command: ${command}`);
@@ -5394,6 +5608,41 @@ async function runValidate() {
   loadEnv2();
   const cfg = loadConfig2();
   printValidation2(cfg);
+}
+async function runExtensions(args) {
+  const { formatExtensionStatus: formatExtensionStatus2, getSupportedExtensions: getSupportedExtensions2, installExtension: installExtension2, getExtensionState: getExtensionState2 } = await Promise.resolve().then(() => (init_extensions(), extensions_exports));
+  const subcommand = args[0];
+  const extensionId = args[1];
+  if (subcommand === "install") {
+    const result = installExtension2(extensionId || "", { rootDir: process.cwd() });
+    if (result.status === "unavailable") {
+      console.error(`Unknown extension: ${extensionId}`);
+      process.exit(1);
+    }
+    console.log(`Installed extension: ${result.extensionId}`);
+    return;
+  }
+  if (subcommand === "status") {
+    const state = getExtensionState2(process.cwd());
+    const entries = Object.entries(state);
+    if (entries.length === 0) {
+      console.log("No extensions installed yet.");
+      return;
+    }
+    for (const [id, extState] of entries) {
+      console.log(`${id}: ${extState.status}`);
+    }
+    return;
+  }
+  const supported = getSupportedExtensions2();
+  console.log("Supported optional extensions:");
+  for (const ext of supported) {
+    console.log(`- ${ext.id}: ${ext.name} \u2014 ${ext.description}`);
+  }
+  console.log("\nInstalled state:");
+  for (const line of formatExtensionStatus2(process.cwd())) {
+    console.log(line);
+  }
 }
 main().catch((e) => {
   console.error("Fatal:", e.message);

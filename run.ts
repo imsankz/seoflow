@@ -13,6 +13,9 @@
  *   seoflow publish [--go]                 Publish unpublished posts
  *   seoflow cluster <seed-keyword>         Generate semantic topic cluster plan
  *   seoflow brief <keyword>                Generate SEO content brief
+ *   seoflow extensions                     List supported optional extensions
+ *   seoflow extensions install <id>       Install an optional extension
+ *   seoflow extensions status             Show installed extension state
  *
  * Legacy flag-based syntax (still supported):
  *   --mode <meta|links|images|keywords|neuron|content|review|factcheck|schema|technical|quality|report|all>
@@ -122,6 +125,45 @@ async function cmdBrief(): Promise<void> {
   console.log(`   Target word count: ${brief.targetWordCount.toLocaleString()} words`);
   console.log(`   Sections: ${brief.outline.length}`);
   console.log('');
+}
+
+// ─── Verb: extensions ───────────────────────────────────────────────────────
+
+async function cmdExtensions(): Promise<void> {
+  const { formatExtensionStatus, getSupportedExtensions, installExtension, getExtensionState } = await import('./lib/extensions');
+  const subcommand = rawArgs[1];
+  const extensionId = rawArgs[2];
+
+  if (subcommand === 'install') {
+    const result = installExtension(extensionId || '', { rootDir: process.cwd() });
+    if (result.status === 'unavailable') {
+      console.error(`Unknown extension: ${extensionId}`);
+      process.exit(1);
+    }
+    console.log(`Installed extension: ${result.extensionId}`);
+    return;
+  }
+
+  if (subcommand === 'status') {
+    const state = getExtensionState(process.cwd()) as Record<string, any>;
+    if (Object.keys(state).length === 0) {
+      console.log('No extensions installed yet.');
+      return;
+    }
+    for (const [id, extState] of Object.entries(state)) {
+      console.log(`${id}: ${(extState as any).status}`);
+    }
+    return;
+  }
+
+  console.log('Supported optional extensions:');
+  for (const ext of getSupportedExtensions()) {
+    console.log(`- ${ext.id}: ${ext.name} — ${ext.description}`);
+  }
+  console.log('\nInstalled state:');
+  for (const line of formatExtensionStatus(process.cwd())) {
+    console.log(line);
+  }
 }
 
 // ─── Verb: init ───────────────────────────────────────────────────────────────
@@ -309,6 +351,7 @@ export async function runPipeline(): Promise<void> {
 
   // Verb-based dispatch (no config required for init)
   if (VERB === 'init') { await cmdInit(); return; }
+  if (VERB === 'extensions') { await cmdExtensions(); return; }
 
   loadEnv();
 

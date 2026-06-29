@@ -3,3 +3,6 @@ node_modules/
 *.log
 seoflow.config.json
 data/
+dist/
+.seoflow/
+.DS_Store

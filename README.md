@@ -32,6 +32,16 @@ npm install  # installs tsx for dev
 npm run seoflow:init
 ```
 
+### Hook workflow
+
+SeoFlow ships a lightweight hook scaffold for local validation and automation:
+
+```bash
+npm run install:repo
+```
+
+This installs the repo-level plugin metadata and hook assets under [.claude-plugin](.claude-plugin) and [hooks](hooks), which can be used by Claude Code-style tooling for post-edit validation.
+
 ---
 
 ## Commands
