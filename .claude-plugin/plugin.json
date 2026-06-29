@@ -1,0 +1,12 @@
+{
+  "name": "seoflow",
+  "version": "0.1.0",
+  "description": "SeoFlow brings Claude SEO-style SEO workflows into a local repo with agent packs, install scripts, and optional extension bundles.",
+  "author": {
+    "name": "imsankz",
+    "url": "https://github.com/imsankz"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/imsankz/seoflow",
+  "repository": "https://github.com/imsankz/seoflow"
+}

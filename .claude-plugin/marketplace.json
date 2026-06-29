@@ -1,0 +1,31 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "imsankz-seoflow",
+  "owner": {
+    "name": "imsankz"
+  },
+  "metadata": {
+    "description": "Local SEO workflow bundle with install scripts, agent packs, and optional extensions for SeoFlow."
+  },
+  "plugins": [
+    {
+      "name": "seoflow",
+      "source": "./",
+      "description": "SeoFlow brings Claude SEO-style SEO workflows into a local repo with agent packs, install scripts, and optional extension bundles.",
+      "author": {
+        "name": "imsankz",
+        "url": "https://github.com/imsankz"
+      },
+      "category": "marketing",
+      "homepage": "https://github.com/imsankz/seoflow",
+      "keywords": [
+        "seo",
+        "content-quality",
+        "schema",
+        "technical-seo",
+        "backlinks",
+        "local-seo"
+      ]
+    }
+  ]
+}
