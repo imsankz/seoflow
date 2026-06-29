@@ -58,6 +58,11 @@ This installs the repo-level plugin metadata and hook assets under [.claude-plug
 | `seoflow generate` | Generate new posts from keywords |
 | `seoflow publish` | Dry-run: preview unpublished posts |
 | `seoflow publish --go` | Actually publish top candidates |
+| `seoflow cluster <seed-keyword>` | Generate semantic topic cluster plan |
+| `seoflow brief <keyword>` | Generate SEO content brief |
+| `seoflow extensions` | List supported optional extensions |
+| `seoflow extensions install <id>` | Install an optional extension |
+| `seoflow extensions status` | Show installed extension state |
 
 ### Global Flags
 
@@ -66,24 +71,28 @@ This installs the repo-level plugin metadata and hook assets under [.claude-plug
 --limit <n>         Max posts to process (default: 10)
 --slug <slug>       Target one specific post
 --reset-slug        Re-audit a previously completed post
---mode <step>       Run only one step: meta|links|images|keywords|neuron|content|review|factcheck
+--mode <step>       Run only one step: meta|links|images|keywords|neuron|content|review|factcheck|schema|technical|quality|report
 ```
 
 ---
 
-## What It Does (7 Pipeline Steps)
+## What It Does (11 Pipeline Steps)
 
 ```
 seoflow audit
   │
-  ├─► 1. Keywords  — Ubersuggest MCP (cached) → focusKeyword + related terms
-  ├─► 2. Meta      — Schema, description length, focusKeyword, lastModified
-  ├─► 3. Links     — Inject internal links from your configured triggers
-  ├─► 4. Images    — Pexels/Unsplash fetch per H2 section (1 per section, max 2)
-  ├─► 5. Neuron    — NeuronWriter NLP: target word count, missing terms, People Also Ask
-  ├─► 6. Content   — Gemini 2.5 Flash: FAQ, thin section expansion, NLP term weaving
-  ├─► 7. Review    — SEO score (1-10), quick wins, auto-fix title/meta
-  └─► 8. FactCheck — Price/claim verification via Google Search grounding
+  ├─► 0. Keywords  — SEMrush (if API key) or Ubersuggest MCP → focusKeyword + related terms
+  ├─► 1. Meta      — Schema, description length, focusKeyword, lastModified
+  ├─► 2. Links     — Inject internal links from your configured triggers
+  ├─► 3. Images    — Pexels/Unsplash fetch per H2 section (1 per section, max 2)
+  ├─► 4. Neuron    — NeuronWriter NLP: target word count, missing terms, People Also Ask
+  ├─► 5. Content   — Gemini 2.5 Flash: FAQ, thin section expansion, NLP term weaving
+  ├─► 6. Review    — Claude-style SEO review: score (1-10), quick wins, auto-fix title/meta
+  ├─► 7. Schema    — Validate and generate Schema.org structured data
+  ├─► 8. Quality   — Content quality audit (E-E-A-T signals, readability)
+  ├─► 9. Technical — Technical SEO checks: broken links, redirect chains
+  ├─►10. FactCheck — Price/claim verification via Google Search grounding
+  └─►11. Report    — Export audit report (PDF format)
 ```
 
 ---
@@ -252,6 +261,7 @@ Covers:
 
 - Node 18+
 - `GEMINI_API_KEY` or `OPENROUTER_API_KEY` (at least one)
+- Optional: `SEMRUSH_API_KEY` (for keyword research)
 - Optional: `NEURONWRITER_API_KEY`, `NEURONWRITER_PROJECT_ID`
 - Optional: `PEXELS_API_KEY` or `UNSPLASH_API_KEY`
 - Optional: Ubersuggest MCP (for keyword research)
