@@ -537,9 +537,25 @@ export async function stepFactCheck(input: StepInput): Promise<StepOutput> {
     return { content, frontmatter, changes };
   }
 
-  // Extract price patterns from content
+  // Extract price patterns from content with more precision
   const pricePattern = /[€$£]\s*\d+(?:[.,]\d+)?(?:\s*(?:€|euro|EUR|USD|GBP|dollars?|pounds?))?/g;
   const prices = [...new Set(content.match(pricePattern) || [])];
+
+  // For each price, extract numeric value and currency
+  const parsedPrices = prices.map(price => {
+    const match = price.match(/([€$£])(\d+(?:[.,]\d+)?)/);
+    if (match) {
+      const currency = match[1];
+      const value = parseFloat(match[2].replace(',', '.'));
+      return {
+        original: price,
+        currency,
+        value,
+        formatted: `${currency}${value.toFixed(2)}`
+      };
+    }
+    return null;
+  }).filter(Boolean) as { original: string; currency: string; value: number; formatted: string }[];
 
   // Extract opening hours patterns from content
   const hoursPattern = /(?:open|closed|hours?)\s*(?:[:=]?\s*)?(?:\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?\s*(?:-|to|–)\s*\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?|24\s*hrs?|24\s*hours?)/gi;
@@ -548,6 +564,10 @@ export async function stepFactCheck(input: StepInput): Promise<StepOutput> {
   // Extract address patterns from content
   const addressPattern = /\d{1,4}\s*[a-zA-Z\s]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|square|sq|terrace|ter|circle|cir|way)\b/i;
   const addresses = [...new Set(content.match(addressPattern) || [])];
+
+  // Extract event date patterns from content
+  const datePattern = /(?:\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}(?:,\s*\d{4})?|\d{1,2}\s*(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(?:\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}-\d{1,2}-\d{2,4})/g;
+  const eventDates = [...new Set(content.match(datePattern) || [])];
 
   const postTitle = frontmatter.title || slug;
   const category = frontmatter.category || getDefaultCategory();
@@ -565,10 +585,11 @@ DESTINATION: ${destination}
   const hasPrices = prices.length > 0;
   const hasHours = openingHours.length > 0;
   const hasAddresses = addresses.length > 0;
+  const hasEventDates = eventDates.length > 0;
 
   if (hasPrices) {
     prompt += `PRICES FOUND IN THE POST:
-${prices.slice(0, 5).map((p, i) => `${i + 1}. ${p}`).join('\n')}
+${parsedPrices.slice(0, 5).map((p, i) => `${i + 1}. ${p.original} (${p.currency}${p.value.toFixed(2)})`).join('\n')}
 
 `;
   }
@@ -587,16 +608,23 @@ ${addresses.map((a, i) => `${i + 1}. ${a}`).join('\n')}
 `;
   }
 
+  if (hasEventDates) {
+    prompt += `EVENT DATES FOUND IN THE POST:
+${eventDates.map((d, i) => `${i + 1}. ${d}`).join('\n')}
+
+`;
+  }
+
   prompt += `For each claim, tell me:
 1. Is this claim still realistic/current? (yes/no/uncertain)
 2. What's the current information if it has changed?
 3. What's your confidence level? (high/medium/low)
 
 OUTPUT: Raw JSON object only, no markdown.
-{"prices":[{"claim":"€30","still_accurate":"yes","current_price":"€30","confidence":"high","note":"Still accurate"}],"openingHours":[{"claim":"9am-5pm","still_accurate":"yes","current_hours":"9am-6pm","confidence":"medium","note":"Hours extended"}],"addresses":[{"claim":"123 Main Street","still_accurate":"yes","current_address":"123 Main Street","confidence":"high","note":"Address verified"}]}
+{"prices":[{"claim":"€30","still_accurate":"yes","current_price":"€30","confidence":"high","note":"Still accurate"}],"openingHours":[{"claim":"9am-5pm","still_accurate":"yes","current_hours":"9am-6pm","confidence":"medium","note":"Hours extended"}],"addresses":[{"claim":"123 Main Street","still_accurate":"yes","current_address":"123 Main Street","confidence":"high","note":"Address verified"}],"eventDates":[{"claim":"January 1, 2024","still_accurate":"no","current_date":"January 1, 2025","confidence":"high","note":"Event date updated"}]}
 `;
 
-  const itemsToCheck = prices.length + openingHours.length + addresses.length;
+  const itemsToCheck = prices.length + openingHours.length + addresses.length + eventDates.length;
   console.log(`     🔍 Fact check: ${itemsToCheck} items found`);
 
   const response = await aiChatWithRetry(prompt, 'fact-check');
@@ -652,6 +680,20 @@ OUTPUT: Raw JSON object only, no markdown.
           }
         } else {
           changes.push(`✅ All ${addressReports.length} addresses verified (via Google Search grounding)`);
+        }
+      }
+
+      // Process event date reports
+      if (report.eventDates && report.eventDates.length > 0) {
+        const eventDateReports = report.eventDates;
+        const flaggedEventDates = eventDateReports.filter((d: any) => d.still_accurate === 'no');
+
+        if (flaggedEventDates.length > 0) {
+          for (const d of flaggedEventDates) {
+            changes.push(`🔴 Event date may be outdated: claimed "${d.claim}", current ~"${d.current_date}" (confidence: ${d.confidence})`);
+          }
+        } else {
+          changes.push(`✅ All ${eventDateReports.length} event dates verified (via Google Search grounding)`);
         }
       }
     }

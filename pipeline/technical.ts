@@ -37,16 +37,18 @@ export async function stepTechnicalAudit(input: StepInput): Promise<StepOutput &
   try {
     console.log(`     📊 Running technical SEO audit for ${input.slug}`);
 
-    // Run PSI and CrUX checks
-    const [psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains] = await Promise.all([
+    // Run PSI, CrUX, and other checks
+    const [psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags] = await Promise.all([
       psi.run(input.slug),
       psi.getCrUX(input.slug),
       psi.getLCPBreakdown(input.slug),
       checkBrokenLinks(input.slug),
       checkRedirectChains(input.slug),
+      checkCanonicalTag(input.slug),
+      checkHreflangTags(input.slug),
     ]);
 
-    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains);
+    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags);
 
     // Log findings
     if (auditResult.issues.length > 0) {
@@ -90,11 +92,30 @@ function analyzeTechnicalData(
   crux?: CrUXResult,
   lcpBreakdown?: LCPBreakdown,
   brokenLinks?: any[],
-  redirectChains?: any[]
+  redirectChains?: any[],
+  canonicalTag?: string,
+  hreflangTags?: string[]
 ): TechnicalAuditResult {
   const issues: string[] = [];
   const warnings: string[] = [];
   const quickWins: string[] = [];
+
+  // Canonical tag
+  if (canonicalTag) {
+    const expectedCanonical = psi.url;
+    if (canonicalTag !== expectedCanonical) {
+      warnings.push(`Canonical tag mismatch: ${canonicalTag} (expected: ${expectedCanonical})`);
+    } else {
+      quickWins.push('Canonical tag is correct');
+    }
+  } else {
+    warnings.push('No canonical tag found');
+  }
+
+  // Hreflang tags
+  if (hreflangTags && hreflangTags.length > 0) {
+    quickWins.push(`Found ${hreflangTags.length} hreflang tags`);
+  }
 
   // Broken links
   if (brokenLinks && brokenLinks.length > 0) {

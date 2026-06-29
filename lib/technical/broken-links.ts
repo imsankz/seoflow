@@ -167,6 +167,57 @@ export class BrokenLinksChecker {
       return null;
     }
   }
+
+  /**
+   * Check canonical tag on a page
+   */
+  static async checkCanonicalTag(url: string): Promise<string | null> {
+    try {
+      const response = await fetch(url);
+      const html = await response.text();
+
+      const canonicalPattern = /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i;
+      const match = html.match(canonicalPattern);
+
+      if (match) {
+        const canonicalUrl = match[1].trim();
+        return this.resolveUrl(canonicalUrl, url);
+      }
+
+      return null;
+    } catch (error: any) {
+      console.error(`Failed to check canonical tag for ${url}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Check hreflang tags on a page
+   */
+  static async checkHreflangTags(url: string): Promise<string[]> {
+    try {
+      const response = await fetch(url);
+      const html = await response.text();
+
+      const hreflangPattern = /<link[^>]+rel=["']alternate["'][^>]+hreflang=["']([^"']+)["'][^>]+href=["']([^"']+)["']/gi;
+      const hreflangTags: string[] = [];
+      let match;
+
+      while ((match = hreflangPattern.exec(html)) !== null) {
+        const lang = match[1].trim();
+        const href = match[2].trim();
+        const absoluteUrl = this.resolveUrl(href, url);
+        if (absoluteUrl) {
+          hreflangTags.push(`${lang}: ${absoluteUrl}`);
+        }
+      }
+
+      return hreflangTags;
+    } catch (error: any) {
+      console.error(`Failed to check hreflang tags for ${url}:`, error.message);
+      return [];
+    }
+  }
 }
 
 /**
@@ -183,4 +234,18 @@ export async function checkRedirectChains(
   url: string
 ): Promise<RedirectChainResult[]> {
   return BrokenLinksChecker.checkRedirectChains(url);
+}
+
+/**
+ * Helper function for checking canonical tag
+ */
+export async function checkCanonicalTag(url: string): Promise<string | null> {
+  return BrokenLinksChecker.checkCanonicalTag(url);
+}
+
+/**
+ * Helper function for checking hreflang tags
+ */
+export async function checkHreflangTags(url: string): Promise<string[]> {
+  return BrokenLinksChecker.checkHreflangTags(url);
 }
