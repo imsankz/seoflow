@@ -35,7 +35,15 @@ function loadConfig() {
   if (!fs2.existsSync(p)) {
     throw new Error(`No ${CONFIG_FILE} found. Run \`npx seoflow init\` first.`);
   }
-  const raw = JSON.parse(fs2.readFileSync(p, "utf8"));
+  let raw;
+  try {
+    raw = JSON.parse(fs2.readFileSync(p, "utf8"));
+  } catch (e) {
+    throw new Error(`Invalid JSON in ${CONFIG_FILE}: ${e instanceof Error ? e.message : e}`);
+  }
+  if (!raw || typeof raw !== "object") {
+    throw new Error(`${CONFIG_FILE} must be a JSON object.`);
+  }
   const r = (s) => path2.resolve(root, s);
   _config = {
     ...raw,
@@ -250,13 +258,20 @@ async function openrouterChat(prompt, config) {
     ...config
   };
   try {
+    let siteUrl = "";
+    let siteName = "";
+    try {
+      siteUrl = getSiteUrl();
+      siteName = loadConfig().siteName;
+    } catch {
+    }
     const res = await fetch(BASE_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": `https://${getSiteUrl()}`,
-        "X-Title": `${loadConfig().siteName} SeoFlow`
+        "HTTP-Referer": siteUrl ? `https://${siteUrl}` : "https://seoflow",
+        "X-Title": siteName ? `${siteName} SeoFlow` : "SeoFlow"
       },
       body: JSON.stringify({
         model: taskConfig.model,
@@ -323,6 +338,109 @@ var init_openrouter_client = __esm({
   }
 });
 
+// lib/claude-client.ts
+function getApiKey2() {
+  if (_apiKey2 !== null) return _apiKey2;
+  _apiKey2 = process.env.ANTHROPIC_API_KEY || null;
+  return _apiKey2;
+}
+function hasClaudeKey() {
+  return !!getApiKey2();
+}
+function getModelConfig2(task) {
+  return DEFAULT_CONFIGS2[task] || DEFAULT_CONFIGS2["content-audit"];
+}
+async function claudeChat(prompt, config) {
+  const apiKey = getApiKey2();
+  if (!apiKey) return null;
+  const taskConfig = {
+    ...DEFAULT_CONFIGS2["content-audit"],
+    ...config
+  };
+  try {
+    let siteName = "";
+    let siteUrl = "";
+    try {
+      siteName = loadConfig().siteName;
+      siteUrl = getSiteUrl();
+    } catch {
+    }
+    const res = await fetch(BASE_URL2, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-metadata": JSON.stringify({
+          "user-agent": siteName ? `${siteName} SeoFlow` : "SeoFlow",
+          "origin": siteUrl ? `https://${siteUrl}` : "https://seoflow"
+        })
+      },
+      body: JSON.stringify({
+        model: taskConfig.model,
+        messages: [{ role: "user", content: prompt }],
+        temperature: taskConfig.temperature ?? 0.5,
+        max_tokens: taskConfig.maxTokens ?? 4096
+      }),
+      signal: AbortSignal.timeout(12e4)
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.error(`     Claude HTTP ${res.status}: ${text.slice(0, 300)}`);
+      return null;
+    }
+    const data = await res.json();
+    return data?.content?.[0]?.text || null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    console.error(`     Claude error: ${msg}`);
+    return null;
+  }
+}
+async function claudeChatWithRetry(prompt, config, maxRetries = 3) {
+  const label = config?.label || getModelConfig2("content-audit").label;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`     \u{1F916} ${label}${attempt > 1 ? ` (attempt ${attempt}/${maxRetries})` : ""}...`);
+    const result = await claudeChat(prompt, config);
+    if (result) return result;
+    if (attempt < maxRetries) {
+      const delay = attempt * 1e4;
+      console.log(`     Retrying in ${delay / 1e3}s...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  return null;
+}
+var BASE_URL2, DEFAULT_CONFIGS2, _apiKey2;
+var init_claude_client = __esm({
+  "lib/claude-client.ts"() {
+    "use strict";
+    init_config();
+    BASE_URL2 = "https://api.anthropic.com/v1/messages";
+    DEFAULT_CONFIGS2 = {
+      "seo-review": {
+        model: "claude-3-5-haiku-20241022",
+        temperature: 0.3,
+        maxTokens: 2048,
+        label: "Claude 3.5 Haiku"
+      },
+      "content-audit": {
+        model: "claude-3-5-sonnet-20241022",
+        temperature: 0.5,
+        maxTokens: 8192,
+        label: "Claude 3.5 Sonnet"
+      },
+      "fact-check": {
+        model: "claude-3-5-haiku-20241022",
+        temperature: 0.2,
+        maxTokens: 1024,
+        label: "Claude 3.5 Haiku"
+      }
+    };
+    _apiKey2 = null;
+  }
+});
+
 // lib/ai-provider.ts
 function resetAiCallCounter() {
   _runCounter.count = 0;
@@ -340,30 +458,41 @@ function checkBudget(task) {
     }
   } catch {
   }
-  _runCounter.count++;
   return true;
 }
 function getPreferredProvider() {
   const env = process.env.AI_PROVIDER?.toLowerCase().trim();
+  if (env === "claude" && hasClaudeKey()) return "claude";
   if (env === "openrouter" && hasOpenRouterKey()) return "openrouter";
+  if (env === "gemini" && hasGemini()) return "gemini";
+  if (hasClaudeKey()) return "claude";
+  if (hasOpenRouterKey()) return "openrouter";
   return "gemini";
 }
 function logAiStatus() {
-  if (hasGemini()) console.log("   Gemini AI: connected (gemini-2.5-flash)");
-  else console.log("   \u26A0\uFE0F  GEMINI_API_KEY not set \u2014 Gemini disabled");
+  if (hasClaudeKey()) console.log("   Claude AI: connected (Claude 3.5 Haiku/Sonnet)");
+  else console.log("   \u26A0\uFE0F  ANTHROPIC_API_KEY not set \u2014 Claude disabled");
   if (hasOpenRouterKey()) {
     console.log(`   OpenRouter: connected (300+ models available)`);
   } else {
     console.log("   \u26A0\uFE0F  OPENROUTER_API_KEY not set \u2014 OpenRouter disabled");
   }
+  if (hasGemini()) console.log("   Gemini AI: connected (gemini-2.5-flash)");
+  else console.log("   \u26A0\uFE0F  GEMINI_API_KEY not set \u2014 Gemini disabled");
   const preferred = getPreferredProvider();
-  if (preferred === "openrouter") console.log(`   \u2192 Primary provider: OpenRouter (set AI_PROVIDER=openrouter)`);
+  if (preferred === "claude") console.log(`   \u2192 Primary provider: Claude (set AI_PROVIDER=claude)`);
+  else if (preferred === "openrouter") console.log(`   \u2192 Primary provider: OpenRouter (set AI_PROVIDER=openrouter)`);
   else console.log(`   \u2192 Primary provider: Gemini (set AI_PROVIDER=gemini or unset)`);
 }
 async function aiChatWithRetry(prompt, task = "content-audit", maxRetries = 3) {
   if (!checkBudget(task)) return null;
+  _runCounter.count++;
   const preferred = getPreferredProvider();
-  if (preferred === "openrouter" && hasOpenRouterKey()) {
+  if (preferred === "claude" && hasClaudeKey()) {
+    const config = getModelConfig2(task);
+    const result = await claudeChatWithRetry(prompt, config, maxRetries);
+    if (result) return result;
+  } else if (preferred === "openrouter" && hasOpenRouterKey()) {
     const config = getModelConfig(task);
     const result = await openrouterChatWithRetry(prompt, config, maxRetries);
     if (result) return result;
@@ -371,13 +500,22 @@ async function aiChatWithRetry(prompt, task = "content-audit", maxRetries = 3) {
     const result = await geminiChatWithRetry(prompt, maxRetries);
     if (result) return result;
   }
-  if (preferred === "openrouter" && hasGemini()) {
-    console.log("     OpenRouter failed, falling back to Gemini...");
-    return geminiChat(prompt);
-  } else if (preferred === "gemini" && hasOpenRouterKey()) {
-    console.log("     Gemini failed, falling back to OpenRouter...");
-    const config = getModelConfig(task);
-    return openrouterChatWithRetry(prompt, config, 1);
+  const availableProviders = [];
+  if (preferred !== "claude" && hasClaudeKey()) availableProviders.push("claude");
+  if (preferred !== "openrouter" && hasOpenRouterKey()) availableProviders.push("openrouter");
+  if (preferred !== "gemini" && hasGemini()) availableProviders.push("gemini");
+  for (const provider of availableProviders) {
+    console.log(`     ${preferred} failed, falling back to ${provider}...`);
+    if (provider === "claude") {
+      const result = await claudeChatWithRetry(prompt, getModelConfig2(task), 1);
+      if (result) return result;
+    } else if (provider === "openrouter") {
+      const result = await openrouterChatWithRetry(prompt, getModelConfig(task), 1);
+      if (result) return result;
+    } else if (provider === "gemini") {
+      const result = await geminiChat(prompt);
+      if (result) return result;
+    }
   }
   return null;
 }
@@ -387,6 +525,7 @@ var init_ai_provider = __esm({
     "use strict";
     init_gemini_client();
     init_openrouter_client();
+    init_claude_client();
     init_config();
     _runCounter = { count: 0 };
     hasGemini = () => !!process.env.GEMINI_API_KEY;
@@ -661,7 +800,6 @@ function bucketAndAnalyze(data, thresholds, labels, dimension) {
     if (bucket.length < 3) continue;
     const avgCtr = bucket.reduce((s, d) => s + d.ctr, 0) / bucket.length;
     const avgPos = bucket.reduce((s, d) => s + d.pos, 0) / bucket.length;
-    const bestCtr = bucket.reduce((s, d) => s + d.ctr, 0) / bucket.length;
     const bestBucketCtr = insights.length > 0 ? Math.max(...insights.map((i2) => i2.avgCtr)) : 0;
     const isBest = bucket.length >= 3 && (insights.length === 0 || avgCtr >= bestBucketCtr);
     const worstCtr = insights.length > 0 ? Math.min(...insights.map((i2) => i2.avgCtr)) : avgCtr;
@@ -710,7 +848,7 @@ function checkGscDelta(slug, step, category, currentGsc) {
   const improved = delta.clicksChange > 0 || delta.positionChange < 0 && delta.impressionsChange > 0;
   const db = loadDB();
   const s = db.steps[step];
-  if (s) {
+  if (s && s.runs > 0) {
     s.improved += improved ? 1 : 0;
     s.avgCtrChange = (s.avgCtrChange * (s.runs - 1) + delta.ctrChange) / s.runs;
     s.avgPositionChange = (s.avgPositionChange * (s.runs - 1) + delta.positionChange) / s.runs;
@@ -1864,7 +2002,7 @@ var init_ubersuggest_client = __esm({
 });
 
 // lib/python/python-manager.ts
-import { exec, execSync as execSync2 } from "child_process";
+import { exec, execSync } from "child_process";
 import path9 from "path";
 import fs11 from "fs";
 import { promisify } from "util";
@@ -1907,7 +2045,7 @@ var init_python_manager = __esm({
        */
       static isPythonAvailable() {
         try {
-          execSync2(`${this.getPythonPath()} --version`, { stdio: "ignore" });
+          execSync(`${this.getPythonPath()} --version`, { stdio: "ignore" });
           return true;
         } catch (error) {
           return false;
@@ -1918,7 +2056,7 @@ var init_python_manager = __esm({
        */
       static isPackageInstalled(packageName) {
         try {
-          execSync2(`${this.getPythonPath()} -c "import ${packageName}"`, { stdio: "ignore" });
+          execSync(`${this.getPythonPath()} -c "import ${packageName}"`, { stdio: "ignore" });
           return true;
         } catch (error) {
           return false;
@@ -1941,7 +2079,7 @@ var init_python_manager = __esm({
         const pythonPath = this.getPythonPath();
         const command = `${pythonPath} "${scriptPath}" ${args.join(" ")}`;
         try {
-          const result = execSync2(command, {
+          const result = execSync(command, {
             encoding: "utf8",
             cwd: workingDir,
             timeout,
@@ -2002,7 +2140,7 @@ var init_python_manager = __esm({
       static runPip(command) {
         const pipCommand = `${this.getPythonPath()} -m pip ${command}`;
         try {
-          const result = execSync2(pipCommand, { encoding: "utf8" });
+          const result = execSync(pipCommand, { encoding: "utf8" });
           return {
             stdout: result,
             stderr: "",
@@ -2108,6 +2246,83 @@ var init_semrush_client = __esm({
           }
         } catch (error) {
           console.error("SEMrush research error:", error.message);
+          return this.fallbackResearch(seed);
+        }
+      }
+      /**
+       * Fallback research using basic keyword extraction
+       */
+      static fallbackResearch(seed) {
+        return {
+          focusKeyword: seed,
+          searchVolume: 0,
+          difficulty: 0,
+          relatedKeywords: [],
+          source: "fallback"
+        };
+      }
+      /**
+       * Escape quotes for shell command
+       */
+      static escapeQuotes(text) {
+        return text.replace(/"/g, '\\"').replace(/\n/g, "\\n");
+      }
+    };
+  }
+});
+
+// lib/ahrefs-client.ts
+async function researchKeywords3(seed, context = "") {
+  return AhrefsClient.researchKeywords(seed, context);
+}
+var AhrefsClient;
+var init_ahrefs_client = __esm({
+  "lib/ahrefs-client.ts"() {
+    "use strict";
+    init_python_manager();
+    AhrefsClient = class {
+      /**
+       * Check if Ahrefs API key is available
+       */
+      static hasKey() {
+        return !!process.env.AHREFS_API_KEY;
+      }
+      /**
+       * Research keywords using Ahrefs
+       */
+      static async researchKeywords(seed, context = "") {
+        try {
+          if (!this.hasKey()) {
+            return this.fallbackResearch(seed);
+          }
+          if (!PythonManager.isPythonAvailable()) {
+            return this.fallbackResearch(seed);
+          }
+          const result = PythonManager.run({
+            scriptName: "ahrefs_keywords",
+            args: [
+              `--seed "${this.escapeQuotes(seed)}"`,
+              `--context "${this.escapeQuotes(context)}"`,
+              `--api-key "${process.env.AHREFS_API_KEY}"`,
+              "--json"
+            ],
+            timeout: 6e4
+          });
+          if (result.code === 0) {
+            const data = JSON.parse(result.stdout);
+            return {
+              focusKeyword: data.focusKeyword || seed,
+              searchVolume: data.searchVolume || 0,
+              difficulty: data.difficulty || 0,
+              relatedKeywords: data.relatedKeywords || [],
+              source: "ahrefs"
+            };
+          } else {
+            console.error("Ahrefs research failed:", result.stderr);
+            return this.fallbackResearch(seed);
+          }
+        } catch (error) {
+          console.error("Ahrefs research error:", error.message);
           return this.fallbackResearch(seed);
         }
       }
@@ -2734,6 +2949,7 @@ var init_schema = __esm({
 });
 
 // lib/technical/psi.ts
+import { execSync as execSync2 } from "child_process";
 import path10 from "path";
 function getPSIInstance(apiKey) {
   if (!psiInstance) {
@@ -2745,7 +2961,7 @@ function validateUrl(url) {
   try {
     const scriptPath = path10.join(process.cwd(), "python", "url_safety.py");
     const cmd = `python3 ${scriptPath} --url "${url}"`;
-    execSync(cmd, { encoding: "utf8", stdio: "ignore" });
+    execSync2(cmd, { encoding: "utf8", stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -2903,6 +3119,335 @@ var init_psi = __esm({
   }
 });
 
+// lib/technical/broken-links.ts
+import fetch2 from "node-fetch";
+async function checkBrokenLinks(url) {
+  return BrokenLinksChecker.checkBrokenLinks(url);
+}
+async function checkRedirectChains(url) {
+  return BrokenLinksChecker.checkRedirectChains(url);
+}
+var BrokenLinksChecker;
+var init_broken_links = __esm({
+  "lib/technical/broken-links.ts"() {
+    "use strict";
+    BrokenLinksChecker = class {
+      /**
+       * Check for broken links on a page
+       */
+      static async checkBrokenLinks(url) {
+        try {
+          const response = await fetch2(url);
+          const html = await response.text();
+          const links = this.extractLinks(html, url);
+          return await this.runConcurrent(links, (link) => this.checkLink(link), 10);
+        } catch (error) {
+          console.error(`Failed to check broken links for ${url}:`, error.message);
+          return [];
+        }
+      }
+      /**
+       * Check a single link
+       */
+      static async checkLink(url) {
+        try {
+          const response = await fetch2(url, {
+            method: "HEAD",
+            redirect: "follow"
+          });
+          return {
+            url,
+            status: response.status,
+            statusText: response.statusText,
+            isBroken: response.status >= 400
+          };
+        } catch (error) {
+          return {
+            url,
+            status: 0,
+            statusText: error.message,
+            isBroken: true
+          };
+        }
+      }
+      /**
+       * Check for redirect chains
+       */
+      static async checkRedirectChains(url) {
+        try {
+          const response = await fetch2(url);
+          const html = await response.text();
+          const links = this.extractLinks(html, url);
+          return await this.runConcurrent(links, (link) => this.checkRedirectChain(link), 10);
+        } catch (error) {
+          console.error(`Failed to check redirect chains for ${url}:`, error.message);
+          return [];
+        }
+      }
+      /**
+       * Check a single link's redirect chain
+       */
+      static async checkRedirectChain(url) {
+        const chain = [];
+        const seen = /* @__PURE__ */ new Set();
+        try {
+          let current = url;
+          while (current) {
+            if (seen.has(current)) {
+              return {
+                url,
+                chain,
+                isRedirectLoop: true,
+                finalStatus: 0
+              };
+            }
+            seen.add(current);
+            chain.push(current);
+            const response = await fetch2(current, {
+              method: "HEAD",
+              redirect: "manual"
+            });
+            if (response.status >= 300 && response.status < 400) {
+              const location = response.headers.get("location");
+              if (location) {
+                current = this.resolveUrl(location, url);
+              } else {
+                break;
+              }
+            } else {
+              break;
+            }
+          }
+          return {
+            url,
+            chain,
+            isRedirectLoop: false,
+            finalStatus: chain.length > 1 ? 301 : 200
+          };
+        } catch (error) {
+          return {
+            url,
+            chain,
+            isRedirectLoop: false,
+            finalStatus: 0
+          };
+        }
+      }
+      /**
+       * Run tasks with a concurrency limit
+       */
+      static async runConcurrent(items, fn, concurrency) {
+        const results = [];
+        for (let i = 0; i < items.length; i += concurrency) {
+          const batch = items.slice(i, i + concurrency);
+          results.push(...await Promise.all(batch.map(fn)));
+        }
+        return results;
+      }
+      /**
+       * Extract links from HTML
+       */
+      static extractLinks(html, baseUrl) {
+        const linkPattern = /<a[^>]+href=["']([^"']+)["']/g;
+        const links = [];
+        let match;
+        while ((match = linkPattern.exec(html)) !== null) {
+          const href = match[1].trim();
+          if (href && !href.startsWith("#") && !href.startsWith("javascript:")) {
+            const absoluteUrl = this.resolveUrl(href, baseUrl);
+            if (absoluteUrl) {
+              links.push(absoluteUrl);
+            }
+          }
+        }
+        return [...new Set(links)];
+      }
+      /**
+       * Resolve relative URL to absolute
+       */
+      static resolveUrl(relative, base) {
+        try {
+          return new URL(relative, base).toString();
+        } catch {
+          return null;
+        }
+      }
+      /**
+       * Check canonical tag on a page
+       */
+      static async checkCanonicalTag(url) {
+        try {
+          const response = await fetch2(url);
+          const html = await response.text();
+          const canonicalPattern = /<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i;
+          const match = html.match(canonicalPattern);
+          if (match) {
+            const canonicalUrl = match[1].trim();
+            return this.resolveUrl(canonicalUrl, url);
+          }
+          return null;
+        } catch (error) {
+          console.error(`Failed to check canonical tag for ${url}:`, error.message);
+          return null;
+        }
+      }
+      /**
+       * Check hreflang tags on a page
+       */
+      static async checkHreflangTags(url) {
+        try {
+          const response = await fetch2(url);
+          const html = await response.text();
+          const hreflangPattern = /<link[^>]+rel=["']alternate["'][^>]+hreflang=["']([^"']+)["'][^>]+href=["']([^"']+)["']/gi;
+          const hreflangTags = [];
+          let match;
+          while ((match = hreflangPattern.exec(html)) !== null) {
+            const lang = match[1].trim();
+            const href = match[2].trim();
+            const absoluteUrl = this.resolveUrl(href, url);
+            if (absoluteUrl) {
+              hreflangTags.push(`${lang}: ${absoluteUrl}`);
+            }
+          }
+          return hreflangTags;
+        } catch (error) {
+          console.error(`Failed to check hreflang tags for ${url}:`, error.message);
+          return [];
+        }
+      }
+      /**
+       * Check sitemap for errors
+       */
+      static async checkSitemap(url) {
+        try {
+          const sitemapUrl = new URL("/sitemap.xml", url).toString();
+          const response = await fetch2(sitemapUrl);
+          if (!response.ok) {
+            return {
+              valid: false,
+              errors: [`Sitemap not found (${response.status} ${response.statusText})`],
+              urls: []
+            };
+          }
+          const xml = await response.text();
+          if (!xml.startsWith("<?xml") && !xml.includes("<urlset")) {
+            return {
+              valid: false,
+              errors: ["Not a valid sitemap XML"],
+              urls: []
+            };
+          }
+          const urlPattern = /<loc>([^<]+)<\/loc>/g;
+          const urls = [];
+          let match;
+          while ((match = urlPattern.exec(xml)) !== null) {
+            urls.push(match[1].trim());
+          }
+          return {
+            valid: true,
+            errors: [],
+            urls
+          };
+        } catch (error) {
+          return {
+            valid: false,
+            errors: [error.message],
+            urls: []
+          };
+        }
+      }
+      /**
+       * Check robots.txt for errors
+       */
+      static async checkRobotsTxt(url) {
+        try {
+          const robotsUrl = new URL("/robots.txt", url).toString();
+          const response = await fetch2(robotsUrl);
+          if (!response.ok) {
+            return {
+              valid: false,
+              errors: [`Robots.txt not found (${response.status} ${response.statusText})`],
+              rules: {}
+            };
+          }
+          const content = await response.text();
+          return {
+            valid: true,
+            errors: [],
+            rules: this.parseRobotsTxt(content)
+          };
+        } catch (error) {
+          return {
+            valid: false,
+            errors: [error.message],
+            rules: {}
+          };
+        }
+      }
+      /**
+       * Check if a page is mobile-friendly using Google's Mobile-Friendly Test API
+       */
+      static async checkMobileFriendly(url) {
+        try {
+          const response = await fetch2(url);
+          const html = await response.text();
+          const viewportPattern = /<meta[^>]+name=["']viewport["'][^>]+content=["']([^"']+)["']/i;
+          const viewportMatch = html.match(viewportPattern);
+          if (!viewportMatch) {
+            return {
+              isMobileFriendly: false,
+              errors: ["Missing viewport meta tag"]
+            };
+          }
+          const viewportContent = viewportMatch[1].toLowerCase();
+          if (!viewportContent.includes("width=device-width") || !viewportContent.includes("initial-scale=1")) {
+            return {
+              isMobileFriendly: false,
+              errors: ["Viewport meta tag is not properly configured for mobile devices"]
+            };
+          }
+          return {
+            isMobileFriendly: true,
+            errors: []
+          };
+        } catch (error) {
+          console.error(`Failed to check mobile-friendliness for ${url}:`, error.message);
+          return {
+            isMobileFriendly: false,
+            errors: [error.message]
+          };
+        }
+      }
+      /**
+       * Parse robots.txt content
+       */
+      static parseRobotsTxt(content) {
+        const lines = content.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith("#"));
+        const rules = {};
+        let currentUserAgent = "*";
+        rules[currentUserAgent] = { allow: [], disallow: [] };
+        for (const line of lines) {
+          const [key, value] = line.split(":").map((s) => s.trim());
+          if (key.toLowerCase() === "user-agent") {
+            currentUserAgent = value;
+            if (!rules[currentUserAgent]) {
+              rules[currentUserAgent] = { allow: [], disallow: [] };
+            }
+          } else if (key.toLowerCase() === "allow") {
+            rules[currentUserAgent].allow.push(value);
+          } else if (key.toLowerCase() === "disallow") {
+            rules[currentUserAgent].disallow.push(value);
+          } else if (key.toLowerCase() === "sitemap") {
+            if (!rules.sitemaps) rules.sitemaps = [];
+            rules.sitemaps.push(value);
+          }
+        }
+        return rules;
+      }
+    };
+  }
+});
+
 // pipeline/technical.ts
 async function stepTechnicalAudit(input) {
   const changes = [];
@@ -2913,12 +3458,19 @@ async function stepTechnicalAudit(input) {
   const psi = getPSIInstance(process.env.GOOGLE_API_KEY);
   try {
     console.log(`     \u{1F4CA} Running technical SEO audit for ${input.slug}`);
-    const [psiResult, cruxResult, lcpBreakdown] = await Promise.all([
+    const [psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags, sitemapResult, robotsResult, mobileResult] = await Promise.all([
       psi.run(input.slug),
       psi.getCrUX(input.slug),
-      psi.getLCPBreakdown(input.slug)
+      psi.getLCPBreakdown(input.slug),
+      checkBrokenLinks(input.slug),
+      checkRedirectChains(input.slug),
+      checkCanonicalTag(input.slug),
+      checkHreflangTags(input.slug),
+      checkSitemap(input.slug),
+      checkRobotsTxt(input.slug),
+      checkMobileFriendly(input.slug)
     ]);
-    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown);
+    const auditResult = analyzeTechnicalData(psiResult, cruxResult, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags, sitemapResult, robotsResult);
     if (auditResult.issues.length > 0) {
       changes.push(`\u{1F534} Technical issues found: ${auditResult.issues.length}`);
       auditResult.issues.forEach((issue) => changes.push(`   \u2022 ${issue}`));
@@ -2947,10 +3499,69 @@ async function stepTechnicalAudit(input) {
     return { content: input.content, frontmatter: input.frontmatter, changes };
   }
 }
-function analyzeTechnicalData(psi, crux, lcpBreakdown) {
+function analyzeTechnicalData(psi, crux, lcpBreakdown, brokenLinks, redirectChains, canonicalTag, hreflangTags, sitemapResult, robotsResult, mobileResult) {
   const issues = [];
   const warnings = [];
   const quickWins = [];
+  if (sitemapResult) {
+    if (!sitemapResult.valid) {
+      issues.push(`Sitemap errors: ${sitemapResult.errors.join(", ")}`);
+    } else {
+      quickWins.push(`Sitemap valid (${sitemapResult.urls.length} URLs)`);
+    }
+  }
+  if (robotsResult) {
+    if (!robotsResult.valid) {
+      issues.push(`Robots.txt errors: ${robotsResult.errors.join(", ")}`);
+    } else {
+      quickWins.push("Robots.txt valid");
+    }
+  }
+  if (mobileResult) {
+    if (!mobileResult.isMobileFriendly) {
+      issues.push(`Mobile-friendliness errors: ${mobileResult.errors.join(", ")}`);
+    } else {
+      quickWins.push("Page is mobile-friendly");
+    }
+  }
+  if (canonicalTag) {
+    const expectedCanonical = psi.url;
+    if (canonicalTag !== expectedCanonical) {
+      warnings.push(`Canonical tag mismatch: ${canonicalTag} (expected: ${expectedCanonical})`);
+    } else {
+      quickWins.push("Canonical tag is correct");
+    }
+  } else {
+    warnings.push("No canonical tag found");
+  }
+  if (hreflangTags && hreflangTags.length > 0) {
+    quickWins.push(`Found ${hreflangTags.length} hreflang tags`);
+  }
+  if (brokenLinks && brokenLinks.length > 0) {
+    const broken = brokenLinks.filter((link) => link.isBroken);
+    if (broken.length > 0) {
+      issues.push(`Found ${broken.length} broken links`);
+      broken.forEach((link) => {
+        issues.push(`  \u2022 ${link.url} (${link.status} ${link.statusText})`);
+      });
+    }
+  }
+  if (redirectChains && redirectChains.length > 0) {
+    const longChains = redirectChains.filter((chain) => chain.chain.length > 2);
+    if (longChains.length > 0) {
+      warnings.push(`Found ${longChains.length} long redirect chains`);
+      longChains.forEach((chain) => {
+        warnings.push(`  \u2022 ${chain.url} (${chain.chain.length} redirects)`);
+      });
+    }
+    const loops = redirectChains.filter((chain) => chain.isRedirectLoop);
+    if (loops.length > 0) {
+      issues.push(`Found ${loops.length} redirect loops`);
+      loops.forEach((loop) => {
+        issues.push(`  \u2022 ${loop.url} (redirect loop)`);
+      });
+    }
+  }
   const CWV_THRESHOLDS = {
     lcp: { good: 2.5, poor: 4 },
     inp: { good: 200, poor: 500 },
@@ -3009,6 +3620,11 @@ function analyzeTechnicalData(psi, crux, lcpBreakdown) {
     psi,
     crux,
     lcpBreakdown,
+    brokenLinks,
+    redirectChains,
+    sitemap: sitemapResult,
+    robots: robotsResult,
+    mobile: mobileResult,
     issues,
     warnings,
     quickWins
@@ -3018,6 +3634,7 @@ var init_technical = __esm({
   "pipeline/technical.ts"() {
     "use strict";
     init_psi();
+    init_broken_links();
   }
 });
 
@@ -3532,6 +4149,9 @@ __export(steps_exports, {
   stepNeuronWriter: () => stepNeuronWriter
 });
 import fs14 from "fs";
+function sanitizeLog(s) {
+  return String(s ?? "").replace(/[\r\n]/g, " ");
+}
 function toolTriggers() {
   if (!_toolTriggers) _toolTriggers = getToolTriggers();
   return _toolTriggers;
@@ -3546,7 +4166,9 @@ async function stepKeywordResearch(input) {
   const seed = fm.focusKeyword || fm.title || input.slug;
   const context = `${fm.category || getDefaultCategory()} ${(fm.tags || []).join(" ")}`;
   let kwResult;
-  if (process.env.SEMRUSH_API_KEY) {
+  if (process.env.AHREFS_API_KEY) {
+    kwResult = await researchKeywords3(seed, context);
+  } else if (process.env.SEMRUSH_API_KEY) {
     kwResult = await researchKeywords2(seed, context);
   } else {
     kwResult = await researchKeywords(seed, input.slug, context);
@@ -3637,10 +4259,10 @@ async function stepInjectImages(input) {
     if (imagesAdded >= MAX_NEW_IMAGES) break;
     if (!sectionNeedsImage(section.lines)) continue;
     const searchQuery = `${section.heading} ${destination}`.replace(/[^a-zA-Z0-9 ]/g, " ").trim();
-    console.log(`    \u{1F50D} Fetching image for: "${searchQuery}"`);
+    console.log(`    \u{1F50D} Fetching image for: "${sanitizeLog(searchQuery)}"`);
     const img = await fetchBestImage(searchQuery);
     if (!img) {
-      console.log(`    \u26A0\uFE0F  No image found for: "${searchQuery}"`);
+      console.log(`    \u26A0\uFE0F  No image found for: "${sanitizeLog(searchQuery)}"`);
       continue;
     }
     const altText = `${section.heading} - ${destination} ${contentDomain}`;
@@ -3665,16 +4287,16 @@ async function stepNeuronWriter(input) {
     return { content: input.content, frontmatter: input.frontmatter, changes: [], neuronData: null };
   }
   const keyword = input.frontmatter.focusKeyword || input.frontmatter.title || input.slug;
-  console.log(`     NW: fetching data for "${keyword}"`);
+  console.log(`     NW: fetching data for "${sanitizeLog(keyword)}"`);
   const neuronData = await fetchNeuronData(keyword);
   if (neuronData?.missingTerms?.length) {
-    console.log(`     NW missing terms: ${neuronData.missingTerms.slice(0, 5).join(", ")}`);
+    console.log(`     NW missing terms: ${sanitizeLog(neuronData.missingTerms.slice(0, 5).join(", "))}`);
   }
   if (neuronData?.targetWordCount) {
     console.log(`     NW target word count: ${neuronData.targetWordCount} (current: ${countWords(input.content)})`);
   }
   if (neuronData?.notes) {
-    console.log(`     NW: ${neuronData.notes}`);
+    console.log(`     NW: ${sanitizeLog(neuronData.notes)}`);
   }
   return { content: input.content, frontmatter: input.frontmatter, changes: [], neuronData };
 }
@@ -3929,31 +4551,75 @@ async function stepFactCheck(input) {
   }
   const pricePattern = /[€$£]\s*\d+(?:[.,]\d+)?(?:\s*(?:€|euro|EUR|USD|GBP|dollars?|pounds?))?/g;
   const prices = [...new Set(content.match(pricePattern) || [])];
-  if (prices.length === 0) {
-    return { content, frontmatter, changes };
-  }
-  const pricesToCheck = prices.slice(0, 5);
+  const parsedPrices = prices.map((price) => {
+    const match = price.match(/([€$£])(\d+(?:[.,]\d+)?)/);
+    if (match) {
+      const currency = match[1];
+      const value = parseFloat(match[2].replace(",", "."));
+      return {
+        original: price,
+        currency,
+        value,
+        formatted: `${currency}${value.toFixed(2)}`
+      };
+    }
+    return null;
+  }).filter(Boolean);
+  const hoursPattern = /(?:open|closed|hours?)\s*(?:[:=]?\s*)?(?:\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?\s*(?:-|to|–)\s*\d{1,2}(?::\d{0,2})?\s*(?:am|pm|AM|PM|hrs?)?|24\s*hrs?|24\s*hours?)/gi;
+  const openingHours = [...new Set(content.match(hoursPattern) || [])];
+  const addressPattern = /\d{1,4}\s*[a-zA-Z\s]+(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|place|pl|square|sq|terrace|ter|circle|cir|way)\b/i;
+  const addresses = [...new Set(content.match(addressPattern) || [])];
+  const datePattern = /(?:\b(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}(?:,\s*\d{4})?|\d{1,2}\s*(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*(?:\d{4})?|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}-\d{1,2}-\d{2,4})/g;
+  const eventDates = [...new Set(content.match(datePattern) || [])];
   const postTitle = frontmatter.title || slug;
   const category = frontmatter.category || getDefaultCategory();
   const destination = (frontmatter.tags || [])[0] || "";
   const domain = getContentDomain();
-  const prompt = `You are verifying price claims in a ${domain} post.
+  let prompt = `You are verifying claims in a ${domain} post.
 
 POST TITLE: "${postTitle}"
 CATEGORY: ${category}
 DESTINATION: ${destination}
 
-PRICES FOUND IN THE POST:
-${pricesToCheck.map((p, i) => `${i + 1}. ${p}`).join("\n")}
+`;
+  const hasPrices = prices.length > 0;
+  const hasHours = openingHours.length > 0;
+  const hasAddresses = addresses.length > 0;
+  const hasEventDates = eventDates.length > 0;
+  if (hasPrices) {
+    prompt += `PRICES FOUND IN THE POST:
+${parsedPrices.slice(0, 5).map((p, i) => `${i + 1}. ${p.original} (${p.currency}${p.value.toFixed(2)})`).join("\n")}
 
-For each price, tell me:
-1. Is this price still realistic/current? (yes/no/uncertain)
-2. What's the approximate current price if it has changed?
+`;
+  }
+  if (hasHours) {
+    prompt += `OPENING HOURS FOUND IN THE POST:
+${openingHours.map((h, i) => `${i + 1}. ${h}`).join("\n")}
+
+`;
+  }
+  if (hasAddresses) {
+    prompt += `ADDRESSES FOUND IN THE POST:
+${addresses.map((a, i) => `${i + 1}. ${a}`).join("\n")}
+
+`;
+  }
+  if (hasEventDates) {
+    prompt += `EVENT DATES FOUND IN THE POST:
+${eventDates.map((d, i) => `${i + 1}. ${d}`).join("\n")}
+
+`;
+  }
+  prompt += `For each claim, tell me:
+1. Is this claim still realistic/current? (yes/no/uncertain)
+2. What's the current information if it has changed?
 3. What's your confidence level? (high/medium/low)
 
 OUTPUT: Raw JSON object only, no markdown.
-{"prices":[{"claim":"\u20AC30","still_accurate":"yes","current_price":"\u20AC30","confidence":"high","note":"Still accurate"}]}`;
-  console.log(`     \u{1F50D} Fact check: ${pricesToCheck.length} prices found`);
+{"prices":[{"claim":"\u20AC30","still_accurate":"yes","current_price":"\u20AC30","confidence":"high","note":"Still accurate"}],"openingHours":[{"claim":"9am-5pm","still_accurate":"yes","current_hours":"9am-6pm","confidence":"medium","note":"Hours extended"}],"addresses":[{"claim":"123 Main Street","still_accurate":"yes","current_address":"123 Main Street","confidence":"high","note":"Address verified"}],"eventDates":[{"claim":"January 1, 2024","still_accurate":"no","current_date":"January 1, 2025","confidence":"high","note":"Event date updated"}]}
+`;
+  const itemsToCheck = prices.length + openingHours.length + addresses.length + eventDates.length;
+  console.log(`     \u{1F50D} Fact check: ${itemsToCheck} items found`);
   const response = await aiChatWithRetry(prompt, "fact-check");
   if (!response) {
     console.log(`     \u26A0\uFE0F  Fact check failed after 3 attempts`);
@@ -3966,14 +4632,49 @@ OUTPUT: Raw JSON object only, no markdown.
     const end = raw.lastIndexOf("}");
     if (start !== -1 && end !== -1) {
       const report = JSON.parse(raw.slice(start, end + 1));
-      const priceReports = report.prices || [];
-      const flagged = priceReports.filter((p) => p.still_accurate === "no");
-      if (flagged.length > 0) {
-        for (const p of flagged) {
-          changes.push(`\u{1F534} Price may be outdated: claimed "${p.claim}", current ~"${p.current_price}" (confidence: ${p.confidence})`);
+      if (report.prices && report.prices.length > 0) {
+        const priceReports = report.prices;
+        const flaggedPrices = priceReports.filter((p) => p.still_accurate === "no");
+        if (flaggedPrices.length > 0) {
+          for (const p of flaggedPrices) {
+            changes.push(`\u{1F534} Price may be outdated: claimed "${p.claim}", current ~"${p.current_price}" (confidence: ${p.confidence})`);
+          }
+        } else {
+          changes.push(`\u2705 All ${priceReports.length} prices verified (via Google Search grounding)`);
         }
-      } else if (priceReports.length > 0) {
-        changes.push(`\u2705 All ${priceReports.length} prices verified (via Google Search grounding)`);
+      }
+      if (report.openingHours && report.openingHours.length > 0) {
+        const hoursReports = report.openingHours;
+        const flaggedHours = hoursReports.filter((h) => h.still_accurate === "no");
+        if (flaggedHours.length > 0) {
+          for (const h of flaggedHours) {
+            changes.push(`\u{1F534} Opening hours may be outdated: claimed "${h.claim}", current ~"${h.current_hours}" (confidence: ${h.confidence})`);
+          }
+        } else {
+          changes.push(`\u2705 All ${hoursReports.length} opening hours verified (via Google Search grounding)`);
+        }
+      }
+      if (report.addresses && report.addresses.length > 0) {
+        const addressReports = report.addresses;
+        const flaggedAddresses = addressReports.filter((a) => a.still_accurate === "no");
+        if (flaggedAddresses.length > 0) {
+          for (const a of flaggedAddresses) {
+            changes.push(`\u{1F534} Address may be outdated: claimed "${a.claim}", current ~"${a.current_address}" (confidence: ${a.confidence})`);
+          }
+        } else {
+          changes.push(`\u2705 All ${addressReports.length} addresses verified (via Google Search grounding)`);
+        }
+      }
+      if (report.eventDates && report.eventDates.length > 0) {
+        const eventDateReports = report.eventDates;
+        const flaggedEventDates = eventDateReports.filter((d) => d.still_accurate === "no");
+        if (flaggedEventDates.length > 0) {
+          for (const d of flaggedEventDates) {
+            changes.push(`\u{1F534} Event date may be outdated: claimed "${d.claim}", current ~"${d.current_date}" (confidence: ${d.confidence})`);
+          }
+        } else {
+          changes.push(`\u2705 All ${eventDateReports.length} event dates verified (via Google Search grounding)`);
+        }
       }
     }
   } catch {
@@ -4003,7 +4704,7 @@ async function processPost(slug, filePath, gscPages, auditLog, opts) {
     return { slug, changes: 0, before: {}, after: {}, neuronData: null };
   }
   console.log(`
-  \u{1F4C4} ${slug}`);
+  \u{1F4C4} ${sanitizeLog(slug)}`);
   const raw = fs14.readFileSync(filePath, "utf8");
   const parsed = parseMdx(raw);
   const gsc = gscPages[slug] || {};
@@ -4015,13 +4716,13 @@ async function processPost(slug, filePath, gscPages, auditLog, opts) {
     meta_description_length: (parsed.frontmatter.description || "").length,
     neuronwriter_score: null
   };
-  console.log(`     Words: ${before.word_count} | Links: ${before.internal_links} | Images: ${before.images} | GSC pos: ${gsc.position?.toFixed(1) || "n/a"}`);
+  console.log(`     Words: ${before.word_count} | Links: ${before.internal_links} | Images: ${before.images} | GSC pos: ${gsc.position?.toFixed(1) ?? "n/a"}`);
   const category = parsed.frontmatter.category || parsed.frontmatter.tags?.[0] || "unknown";
   if (gsc?.impressions && gsc.impressions > 0) {
     const delta = checkGscDelta(slug, mode, category, gsc);
     if (delta) {
       const dir = delta.positionChange < 0 ? "improved" : "declined";
-      console.log(`     \u{1F4C8} GSC since last audit: pos ${delta.positionChange > 0 ? "+" : ""}${delta.positionChange.toFixed(1)} (${dir}), ${delta.clicksChange > 0 ? "+" : ""}${delta.clicksChange} clicks`);
+      console.log(`     \u{1F4C8} GSC since last audit: pos ${delta.positionChange > 0 ? "+" : ""}${delta.positionChange.toFixed(1)} (${sanitizeLog(dir)}), ${delta.clicksChange > 0 ? "+" : ""}${delta.clicksChange} clicks`);
     }
   }
   let state = { content: input.content, frontmatter: input.frontmatter };
@@ -4154,7 +4855,7 @@ async function processPost(slug, filePath, gscPages, auditLog, opts) {
     neuronwriter_missing_terms: neuronData?.missingTerms || [],
     neuronwriter_suggested_h2s: neuronData?.h2Terms || [],
     next_review: allChanges.length > 0 ? reviewDate.toISOString().split("T")[0] : null,
-    notes: gsc.impressions > 1e3 && gsc.ctr < 3 ? `High impressions (${gsc.impressions}) + low CTR (${gsc.ctr.toFixed(2)}%) \u2014 consider title rewrite` : "",
+    notes: gsc.impressions && gsc.impressions > 1e3 && gsc.ctr && gsc.ctr < 3 ? `High impressions (${gsc.impressions}) + low CTR (${gsc.ctr.toFixed(2)}%) \u2014 consider title rewrite` : "",
     flagged_for_manual: !!(before.word_count < 400 || neuronData?.targetWordCount && before.word_count < neuronData.targetWordCount * 0.5)
   });
   return { slug, changes: allChanges.length, before, after, neuronData };
@@ -4170,6 +4871,7 @@ var init_steps = __esm({
     init_audit_log();
     init_ubersuggest_client();
     init_semrush_client();
+    init_ahrefs_client();
     init_config();
     init_ai_provider();
     init_learning();
@@ -4304,7 +5006,7 @@ function getSiteProperty() {
   const url = cfg.siteUrl.startsWith("http") ? cfg.siteUrl : `https://${cfg.siteUrl}`;
   return url.endsWith("/") ? url : url + "/";
 }
-function urlToSlug(url, siteUrl) {
+function urlToSlug(url) {
   const cfg = loadConfig();
   const path14 = url.replace(/^https?:\/\/[^/]+/, "");
   const blogPrefix = cfg.blogPrefix || "/blog/";
@@ -4341,7 +5043,7 @@ async function fetchGscPages(days = 28, rows = 2e3) {
   const map = {};
   for (const row of res.rows || []) {
     const url = row.keys[0];
-    const slug = urlToSlug(url, siteProperty);
+    const slug = urlToSlug(url);
     map[slug] = {
       url,
       clicks: row.clicks || 0,
@@ -4860,8 +5562,8 @@ function validateEnv() {
     checks.push({ field: "AI_PROVIDER", status: "error", message: "No AI provider configured. Set GEMINI_API_KEY or OPENROUTER_API_KEY." });
   }
   const provider = process.env.AI_PROVIDER;
-  if (provider && !["gemini", "openrouter"].includes(provider.toLowerCase())) {
-    checks.push({ field: "AI_PROVIDER", status: "warn", message: `Invalid value "${provider}". Use "gemini" or "openrouter".` });
+  if (provider && !["gemini", "openrouter", "claude"].includes(provider.toLowerCase())) {
+    checks.push({ field: "AI_PROVIDER", status: "warn", message: `Invalid value "${provider}". Use "gemini", "openrouter", or "claude".` });
   }
   const valid = checks.every((c) => c.status !== "error");
   return { valid, checks };
