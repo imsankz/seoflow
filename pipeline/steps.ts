@@ -26,6 +26,11 @@ import { stepExportReport } from './report-export';
 // ─── AI Quality Gate ──────────────────────────────────────────────────────────
 const AI_PHRASES = ['nestled', 'delve', 'vibrant', 'treasure trove', 'bustling', 'hidden gem', 'breathtaking', 'truly unique', 'picturesque', 'enchanting', 'captivating', 'metropolis', 'testament to', 'rich tapestry', 'magical', 'whimsical', 'wanderlust', 'a must-visit'];
 
+/** Strip newline/CR characters from user-controlled strings before logging (CWE-117). */
+function sanitizeLog(s: string | undefined | null): string {
+  return String(s ?? '').replace(/[\r\n]/g, ' ');
+}
+
 // Lazy-loaded trigger maps from site config
 let _toolTriggers: ToolTrigger[] | null = null;
 let _bookingTriggers: BookingTrigger[] | null = null;
@@ -161,11 +166,11 @@ export async function stepInjectImages(input: StepInput): Promise<StepOutput> {
     if (!sectionNeedsImage(section.lines)) continue;
 
     const searchQuery = `${section.heading} ${destination}`.replace(/[^a-zA-Z0-9 ]/g, ' ').trim();
-    console.log(`    🔍 Fetching image for: "${searchQuery}"`);
+    console.log(`    🔍 Fetching image for: "${sanitizeLog(searchQuery)}"`);
 
     const img = await fetchBestImage(searchQuery);
     if (!img) {
-      console.log(`    ⚠️  No image found for: "${searchQuery}"`);
+      console.log(`    ⚠️  No image found for: "${sanitizeLog(searchQuery)}"`);
       continue;
     }
 
@@ -192,17 +197,17 @@ export async function stepNeuronWriter(input: StepInput): Promise<StepOutput & {
   }
 
   const keyword = input.frontmatter.focusKeyword || input.frontmatter.title || input.slug;
-  console.log(`     NW: fetching data for "${keyword}"`);
+  console.log(`     NW: fetching data for "${sanitizeLog(keyword)}"`);
   const neuronData = await fetchNeuronData(keyword);
 
   if (neuronData?.missingTerms?.length) {
-    console.log(`     NW missing terms: ${neuronData.missingTerms.slice(0, 5).join(', ')}`);
+    console.log(`     NW missing terms: ${sanitizeLog(neuronData.missingTerms.slice(0, 5).join(', '))}`);
   }
   if (neuronData?.targetWordCount) {
     console.log(`     NW target word count: ${neuronData.targetWordCount} (current: ${countWords(input.content)})`);
   }
   if (neuronData?.notes) {
-    console.log(`     NW: ${neuronData.notes}`);
+    console.log(`     NW: ${sanitizeLog(neuronData.notes)}`);
   }
 
   return { content: input.content, frontmatter: input.frontmatter, changes: [], neuronData };
@@ -740,7 +745,7 @@ export async function processPost(
     return { slug, changes: 0, before: {}, after: {}, neuronData: null };
   }
 
-  console.log(`\n  📄 ${slug}`);
+  console.log(`\n  📄 ${sanitizeLog(slug)}`);
 
   const raw = fs.readFileSync(filePath, 'utf8');
   const parsed = parseMdx(raw);
@@ -756,7 +761,7 @@ export async function processPost(
     neuronwriter_score: null as number | null,
   };
 
-  console.log(`     Words: ${before.word_count} | Links: ${before.internal_links} | Images: ${before.images} | GSC pos: ${gsc.position?.toFixed(1) || 'n/a'}`);
+  console.log(`     Words: ${before.word_count} | Links: ${before.internal_links} | Images: ${before.images} | GSC pos: ${gsc.position?.toFixed(1) ?? 'n/a'}`);
 
   // ── Self-Learning: Check GSC delta from previous run ───────────────────
   const category = parsed.frontmatter.category || parsed.frontmatter.tags?.[0] || 'unknown';
@@ -764,7 +769,7 @@ export async function processPost(
     const delta = checkGscDelta(slug, mode, category, gsc);
     if (delta) {
       const dir = delta.positionChange < 0 ? 'improved' : 'declined';
-      console.log(`     📈 GSC since last audit: pos ${delta.positionChange > 0 ? '+' : ''}${delta.positionChange.toFixed(1)} (${dir}), ${delta.clicksChange > 0 ? '+' : ''}${delta.clicksChange} clicks`);
+      console.log(`     📈 GSC since last audit: pos ${delta.positionChange > 0 ? '+' : ''}${delta.positionChange.toFixed(1)} (${sanitizeLog(dir)}), ${delta.clicksChange > 0 ? '+' : ''}${delta.clicksChange} clicks`);
     }
   }
 
@@ -930,7 +935,7 @@ export async function processPost(
     neuronwriter_missing_terms: neuronData?.missingTerms || [],
     neuronwriter_suggested_h2s: neuronData?.h2Terms || [],
     next_review: allChanges.length > 0 ? reviewDate.toISOString().split('T')[0] : null,
-    notes: gsc.impressions > 1000 && gsc.ctr < 3
+    notes: gsc.impressions && gsc.impressions > 1000 && gsc.ctr && gsc.ctr < 3
       ? `High impressions (${gsc.impressions}) + low CTR (${gsc.ctr.toFixed(2)}%) — consider title rewrite`
       : '',
     flagged_for_manual: !!(before.word_count < 400 || (neuronData?.targetWordCount && before.word_count < neuronData.targetWordCount * 0.5)),

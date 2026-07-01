@@ -127,14 +127,9 @@ function getSiteProperty(): string {
 
 // ─── Slug extraction ──────────────────────────────────────────────────────────
 
-function urlToSlug(url: string, siteUrl: string): string {
+function urlToSlug(url: string): string {
   const cfg = loadConfig();
-  // Strip the origin
   const path = url.replace(/^https?:\/\/[^/]+/, '');
-
-  // Apply postsDir-aware stripping: if posts are at /blog/, strip /blog/
-  // We infer the blog prefix from postsDir pattern in config
-  // Default: strip /blog/ prefix
   const blogPrefix = cfg.blogPrefix || '/blog/';
   return path.replace(new RegExp(`^${blogPrefix}`), '').replace(/\/$/, '');
 }
@@ -191,7 +186,7 @@ export async function fetchGscPages(
   const map: Record<string, GSCPageData> = {};
   for (const row of res.rows || []) {
     const url = row.keys[0];
-    const slug = urlToSlug(url, siteProperty);
+    const slug = urlToSlug(url);
     map[slug] = {
       url,
       clicks: row.clicks || 0,

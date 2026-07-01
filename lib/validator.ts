@@ -115,8 +115,8 @@ export function validateEnv(): ValidationResult {
 
   // Check AI_PROVIDER value
   const provider = process.env.AI_PROVIDER;
-  if (provider && !['gemini', 'openrouter'].includes(provider.toLowerCase())) {
-    checks.push({ field: 'AI_PROVIDER', status: 'warn', message: `Invalid value "${provider}". Use "gemini" or "openrouter".` });
+  if (provider && !['gemini', 'openrouter', 'claude'].includes(provider.toLowerCase())) {
+    checks.push({ field: 'AI_PROVIDER', status: 'warn', message: `Invalid value "${provider}". Use "gemini", "openrouter", or "claude".` });
   }
 
   const valid = checks.every(c => c.status !== 'error');

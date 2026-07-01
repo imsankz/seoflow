@@ -4,6 +4,7 @@
  * Extends the main seoflow CLI with Claude SEO-specific commands
  */
 
+import fs from 'fs';
 import { Command } from 'commander';
 import { ReportGenerator } from '../reports/reports';
 import { DriftMonitor } from '../drift/drift';

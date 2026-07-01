@@ -135,7 +135,15 @@ export function loadConfig(): SeoFlowConfig {
   if (!fs.existsSync(p)) {
     throw new Error(`No ${CONFIG_FILE} found. Run \`npx seoflow init\` first.`);
   }
-  const raw: SeoFlowConfig = JSON.parse(fs.readFileSync(p, 'utf8'));
+  let raw: SeoFlowConfig;
+  try {
+    raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) {
+    throw new Error(`Invalid JSON in ${CONFIG_FILE}: ${e instanceof Error ? e.message : e}`);
+  }
+  if (!raw || typeof raw !== 'object') {
+    throw new Error(`${CONFIG_FILE} must be a JSON object.`);
+  }
   const r = (s: string) => path.resolve(root, s);
   _config = {
     ...raw,

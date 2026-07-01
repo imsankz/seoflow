@@ -219,7 +219,6 @@ function bucketAndAnalyze(
     if (bucket.length < 3) continue;
     const avgCtr = bucket.reduce((s, d) => s + d.ctr, 0) / bucket.length;
     const avgPos = bucket.reduce((s, d) => s + d.pos, 0) / bucket.length;
-    const bestCtr = bucket.reduce((s, d) => s + d.ctr, 0) / bucket.length;
 
     // Generate recommendation if this is the best bucket
     const bestBucketCtr = insights.length > 0 ? Math.max(...insights.map(i => i.avgCtr)) : 0;
@@ -294,7 +293,7 @@ export function checkGscDelta(slug: string, step: string, category: string, curr
   const improved = delta.clicksChange > 0 || (delta.positionChange < 0 && delta.impressionsChange > 0);
   const db = loadDB();
   const s = db.steps[step];
-  if (s) {
+  if (s && s.runs > 0) {
     s.improved += improved ? 1 : 0;
     s.avgCtrChange = (s.avgCtrChange * (s.runs - 1) + delta.ctrChange) / s.runs;
     s.avgPositionChange = (s.avgPositionChange * (s.runs - 1) + delta.positionChange) / s.runs;

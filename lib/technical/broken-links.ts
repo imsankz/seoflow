@@ -22,13 +22,8 @@ export class BrokenLinksChecker {
     try {
       const response = await fetch(url);
       const html = await response.text();
-
       const links = this.extractLinks(html, url);
-      const results = await Promise.all(
-        links.map(async (link) => this.checkLink(link))
-      );
-
-      return results;
+      return await this.runConcurrent(links, (link) => this.checkLink(link), 10);
     } catch (error: any) {
       console.error(`Failed to check broken links for ${url}:`, error.message);
       return [];
@@ -68,13 +63,8 @@ export class BrokenLinksChecker {
     try {
       const response = await fetch(url);
       const html = await response.text();
-
       const links = this.extractLinks(html, url);
-      const results = await Promise.all(
-        links.map(async (link) => this.checkRedirectChain(link))
-      );
-
-      return results;
+      return await this.runConcurrent(links, (link) => this.checkRedirectChain(link), 10);
     } catch (error: any) {
       console.error(`Failed to check redirect chains for ${url}:`, error.message);
       return [];
@@ -134,6 +124,18 @@ export class BrokenLinksChecker {
         finalStatus: 0,
       };
     }
+  }
+
+  /**
+   * Run tasks with a concurrency limit
+   */
+  private static async runConcurrent<T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency: number): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += concurrency) {
+      const batch = items.slice(i, i + concurrency);
+      results.push(...await Promise.all(batch.map(fn)));
+    }
+    return results;
   }
 
   /**

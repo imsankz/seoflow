@@ -84,6 +84,9 @@ export async function claudeChat(
   };
 
   try {
+    let siteName = '';
+    let siteUrl = '';
+    try { siteName = loadConfig().siteName; siteUrl = getSiteUrl(); } catch { /* config not loaded */ }
     const res = await fetch(BASE_URL, {
       method: 'POST',
       headers: {
@@ -91,8 +94,8 @@ export async function claudeChat(
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'anthropic-metadata': JSON.stringify({
-          'user-agent': `${loadConfig().siteName} SeoFlow`,
-          'origin': `https://${getSiteUrl()}`,
+          'user-agent': siteName ? `${siteName} SeoFlow` : 'SeoFlow',
+          'origin': siteUrl ? `https://${siteUrl}` : 'https://seoflow',
         }),
       },
       body: JSON.stringify({

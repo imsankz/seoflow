@@ -4,6 +4,7 @@
  * Wraps Claude SEO's pagespeed_check.py script
  */
 
+import { execSync } from 'child_process';
 import { PythonManager } from '../python/python-manager';
 import path from 'path';
 

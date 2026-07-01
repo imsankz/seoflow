@@ -88,13 +88,16 @@ export async function openrouterChat(
   };
 
   try {
+    let siteUrl = '';
+    let siteName = '';
+    try { siteUrl = getSiteUrl(); siteName = loadConfig().siteName; } catch { /* config not loaded */ }
     const res = await fetch(BASE_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': `https://${getSiteUrl()}`,
-        'X-Title': `${loadConfig().siteName} SeoFlow`,
+        'HTTP-Referer': siteUrl ? `https://${siteUrl}` : 'https://seoflow',
+        'X-Title': siteName ? `${siteName} SeoFlow` : 'SeoFlow',
       },
       body: JSON.stringify({
         model: taskConfig.model,

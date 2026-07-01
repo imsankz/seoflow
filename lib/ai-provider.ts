@@ -49,7 +49,6 @@ function checkBudget(task: string): boolean {
   } catch {
     // config not loaded yet — allow
   }
-  _runCounter.count++;
   return true;
 }
 
@@ -103,6 +102,7 @@ export async function aiChat(
   task = 'content-audit'
 ): Promise<string | null> {
   if (!checkBudget(task)) return null;
+  _runCounter.count++;
   const preferred = getPreferredProvider();
 
   // Try preferred provider
@@ -159,6 +159,7 @@ export async function aiChatWithRetry(
   maxRetries = 3
 ): Promise<string | null> {
   if (!checkBudget(task)) return null;
+  _runCounter.count++;
   const preferred = getPreferredProvider();
 
   // Try preferred provider with retries
